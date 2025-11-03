@@ -41,7 +41,7 @@ python -m pip install --upgrade pip
    Pick the wheel that matches your CUDA/cuDNN stack. For CUDA 12 (recommended for current NVIDIA drivers):
 
    ```bash
-   pip install --upgrade "jax[cuda12_pip]" -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
+   pip install --upgrade "jax[cuda12]"
    ```
 
    For CUDA 11.8, swap the extra for `"jax[cuda11_pip]"`. See the [official JAX installation guide](https://github.com/google/jax#installation) for other platforms.
