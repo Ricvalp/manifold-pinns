@@ -1,5 +1,5 @@
 import ml_collections
-from absl import app
+from absl import app, flags
 from ml_collections import config_flags
 import wandb
 import jax.numpy as jnp
@@ -38,7 +38,7 @@ def load_cfgs():
     dataset.num_supernodes = 128
     dataset.seed = 37
     dataset.create_dataset = False
-    dataset.charts_path = "/datasets/square/"
+    dataset.charts_path = str(Path("datasets") / "square")
     dataset.num_points = 1000
     dataset.iterations = 100
     dataset.min_dist = 10.
@@ -80,6 +80,7 @@ def load_cfgs():
     cfg.wandb.project = "universal_autoencoder-square"
     cfg.wandb.test_every = 10000
     cfg.wandb.run_name_prefix = "square"
+    cfg.wandb.entity = "ricvalp"
 
     # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
     # # # # # # # # # # # # Profiler  # # # # # # # # # # # # # # # # #
@@ -131,7 +132,11 @@ def load_cfgs():
     return cfg
 
 
-_CONFIG = config_flags.DEFINE_config_dict("config", load_cfgs())
+FLAGS = flags.FLAGS
+if "config" in FLAGS:
+    _CONFIG = FLAGS["config"]
+else:
+    _CONFIG = config_flags.DEFINE_config_dict("config", load_cfgs())
 
 
 def create_dataset(cfg):
@@ -191,7 +196,6 @@ def run_experiment(cfg):
         )
         wandb_id = run.id
         wandb.run.name = f"{cfg.wandb.run_name_prefix}_{wandb_id}"
-        wandb.run.save()
     else:
         wandb_id = "no_wandb_" + str(cfg.seed)
     

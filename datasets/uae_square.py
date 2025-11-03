@@ -26,7 +26,19 @@ class UniversalAESquareDataset(data.Dataset):
         
         self.config = config.dataset
         self.train = train
-        
+        self.charts_path = Path(self.config.charts_path)
+
+        self._base_grid = self._create_base_grid()
+        self.target_num_points = min(self.config.num_points, self._base_grid.shape[0])
+
+        if self.config.create_dataset:
+            self._generate_and_save_charts()
+
+        self._load_charts()
+        self.num_points = self.charts.shape[1]
+    
+    def _create_base_grid(self):
+        """Create the reference square grid (stored as (num_points, 3))."""
         x = np.linspace(0, 1, 64)
         y = np.linspace(0, 1, 64)
         xx, yy = np.meshgrid(x, y)
@@ -34,14 +46,48 @@ class UniversalAESquareDataset(data.Dataset):
         points[:, 0] = xx.flatten()
         points[:, 1] = yy.flatten()
         points[:, 2] = 0.0
-        self.grid = points
+        return points
 
-        self.num_points = self.grid.shape[0]
+    def _generate_and_save_charts(self):
+        """Generate analytic deformations and save them to disk."""
+        charts = []
+        num_iterations = max(1, self.config.iterations)
+        for _ in range(num_iterations):
+            t = np.random.uniform(0, 0.8, size=(4,))
+            chart = self._get_deformed_points(t=t)
+            chart = self._subsample_points(chart)
+            charts.append(chart)
+
+        charts = np.stack(charts, axis=0)
+        split_idx = max(1, int(0.9 * len(charts)))
+
+        self.charts_path.mkdir(parents=True, exist_ok=True)
+        np.save(self.charts_path / "train_charts.npy", charts[:split_idx])
+        np.save(self.charts_path / "val_charts.npy", charts[split_idx:])
+        print(f"Saved {split_idx} training charts and {len(charts) - split_idx} validation charts to {self.charts_path}")
+
+    def _load_charts(self):
+        """Load saved charts for training or validation."""
+        train_file = self.charts_path / "train_charts.npy"
+        val_file = self.charts_path / "val_charts.npy"
+        if not train_file.exists() or not val_file.exists():
+            raise FileNotFoundError(
+                f"Could not find saved charts at {self.charts_path}. "
+                "Run dataset generation first."
+            )
+
+        if self.train:
+            self.charts = np.load(train_file)
+        else:
+            self.charts = np.load(val_file)
+            if len(self.charts) == 0:
+                # Fall back to train charts if validation split is empty
+                self.charts = np.load(train_file)
     
     def _get_deformed_points(self, t):
         """Apply a smooth deformation in the z-direction to the chart points."""
         # Get the base points for this chart
-        points = self.grid.copy()  # Make a copy to avoid modifying original data
+        points = self._base_grid.copy()  # Make a copy to avoid modifying original data
         
         # Get x and y coordinates
         x = points[:, 0]
@@ -64,16 +110,23 @@ class UniversalAESquareDataset(data.Dataset):
         return points
 
     def __len__(self):
-        """Return a large virtual length for infinite sampling."""
-        return 100000
+        """Return the number of available charts."""
+        return len(self.charts)
 
     def __getitem__(self, idx):
         """Sample a random deformation and return the associated chart."""
 
-        supernode_idxs = np.random.permutation(self.num_points)[: self.config.num_supernodes]
-        t = np.random.uniform(0, .8, size=(4,))
-        points = self._get_deformed_points(t=t)
+        chart_id = np.random.randint(0, len(self.charts))
+        points = self.charts[chart_id]
+        supernode_idxs = np.random.permutation(points.shape[0])[: self.config.num_supernodes]
         return points, supernode_idxs
+
+    def _subsample_points(self, points: np.ndarray) -> np.ndarray:
+        """Randomly subsample points to match ``dataset.num_points``."""
+        if points.shape[0] <= self.target_num_points:
+            return points
+        idxs = np.random.choice(points.shape[0], self.target_num_points, replace=False)
+        return points[idxs]
 
 
 def create_graph(

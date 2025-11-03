@@ -50,7 +50,7 @@ python -m pip install --upgrade pip
 
    ```bash
    pip install absl-py flax ml-collections optax wandb matplotlib tqdm \
-       networkx scikit-learn scipy trimesh
+       networkx scikit-learn scipy trimesh einops plotly
    ```
 
 Verify your setup:
@@ -97,6 +97,14 @@ Pass `--create-dataset` to regenerate charts before training, or reuse the same 
 python -m manifold_pinns.pipeline.cli uae coil \
   --create-dataset \
   --override "train.lr=5e-5,wandb.use=False"
+```
+
+Evaluate a trained UAE checkpoint (use the WandB/run ID as the folder name inside the checkpoints directory):
+
+```bash
+python -m manifold_pinns.pipeline.cli uae-eval square d4u6a4ww \
+  --samples 8 \
+  --output figures/square/run_d4u6a4ww_eval.png
 ```
 
 ### Step 2 – PINN experiments

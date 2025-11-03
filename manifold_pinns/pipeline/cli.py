@@ -5,6 +5,7 @@ import ast
 from typing import Any, Dict
 
 from . import generate_dataset, run_pinn_experiment, train_autoencoder
+from .uae_eval import evaluate_autoencoder
 
 
 def _parse_overrides(values: str) -> Dict[str, Any]:
@@ -66,6 +67,33 @@ def main(argv=None) -> None:
         help="Comma separated key=value pairs for config overrides.",
     )
 
+    uae_eval_parser = subparsers.add_parser(
+        "uae-eval", help="Evaluate a UAE checkpoint on the validation split."
+    )
+    uae_eval_parser.add_argument("name", choices=["bunny", "coil", "square"])
+    uae_eval_parser.add_argument("run_id", help="Run identifier (checkpoint folder).")
+    uae_eval_parser.add_argument(
+        "--step",
+        type=int,
+        help="Optional checkpoint step to restore. Defaults to the latest.",
+    )
+    uae_eval_parser.add_argument(
+        "--samples",
+        type=int,
+        default=5,
+        help="Number of validation samples to visualise.",
+    )
+    uae_eval_parser.add_argument(
+        "--output",
+        type=str,
+        help="Optional output path for reconstruction plots.",
+    )
+    uae_eval_parser.add_argument(
+        "--override",
+        type=str,
+        help="Comma separated key=value pairs for config overrides.",
+    )
+
     args = parser.parse_args(argv)
 
     overrides = (
@@ -78,6 +106,15 @@ def main(argv=None) -> None:
         train_autoencoder(args.name, overrides, create_dataset=args.create_dataset)
     elif args.command == "pinn":
         run_pinn_experiment(args.experiment, args.config, mode=args.mode, overrides=overrides)
+    elif args.command == "uae-eval":
+        evaluate_autoencoder(
+            args.name,
+            args.run_id,
+            overrides=overrides,
+            checkpoint_step=args.step,
+            num_samples=args.samples,
+            output_path=args.output,
+        )
     else:
         raise ValueError(f"Unknown command {args.command}")
 
