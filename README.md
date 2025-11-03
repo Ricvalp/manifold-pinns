@@ -16,7 +16,49 @@ All commands below assume the repository root as the working directory and `PYTH
 export PYTHONPATH=.
 ```
 
-The project uses `jax`, `flax`, `ml_collections`, `optax`, `torch`, `wandb` and plotting dependencies. Install requirements using your preferred environment manager.
+The project uses `jax`, `flax`, `ml_collections`, `optax`, `torch`, `wandb` and plotting dependencies.
+
+### Dependency Installation
+
+Create a fresh virtual environment (Python 3.10+ recommended) and install dependencies via `pip`:
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+```
+
+1. **PyTorch (CPU build)**
+
+   ```bash
+   pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
+   ```
+
+   This installs the latest stable CPU-only wheels from the official PyTorch repository.
+
+2. **JAX with NVIDIA GPU support**
+
+   Pick the wheel that matches your CUDA/cuDNN stack. For CUDA 12 (recommended for current NVIDIA drivers):
+
+   ```bash
+   pip install --upgrade "jax[cuda12_pip]" -f https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
+   ```
+
+   For CUDA 11.8, swap the extra for `"jax[cuda11_pip]"`. See the [official JAX installation guide](https://github.com/google/jax#installation) for other platforms.
+
+3. **Remaining Python packages**
+
+   ```bash
+   pip install absl-py flax ml-collections optax wandb matplotlib tqdm \
+       networkx scikit-learn scipy trimesh
+   ```
+
+Verify your setup:
+
+```bash
+python -c "import jax; print(jax.devices())"
+python -c "import torch; print(torch.__version__)"
+```
 
 ## Quick Start via CLI
 
