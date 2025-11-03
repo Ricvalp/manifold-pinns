@@ -1,0 +1,1 @@
+# This library modifies the original JAX-PI library (Wang et al. 2023) to work with M-PINNs.
