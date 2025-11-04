@@ -6,7 +6,7 @@ import imageio
 import jax.numpy as jnp
 import matplotlib.pyplot as plt
 import ml_collections
-import models
+from . import models
 from tqdm import tqdm
 
 from charts.riemann import get_metric_tensor_and_sqrt_det_g_grid_universal_autodecoder

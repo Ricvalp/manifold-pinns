@@ -301,19 +301,6 @@ def run_experiment(cfg):
             
             data_loader_iter = iter(data_loader)
 
-# ------------------------------
-# --------- testing ------------
-# ------------------------------
-
-    # Add test reconstruction after training
-    # print("Testing reconstruction...")
-    # name = figure_path + "/final_reconstruction_samples_pre_finetuning.png"
-    # test_mse = test_reconstruction(state, data_loader, decoder_apply_fn, name=name)
-
-    # if cfg.wandb.use:
-    #     wandb.log({"final_reconstruction_mse": test_mse})
-    #     wandb.log({"reconstruction_samples": wandb.Image(name)})
-
 
 def numpy_collate(batch):
     if isinstance(batch[0], np.ndarray):

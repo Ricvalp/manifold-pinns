@@ -50,7 +50,7 @@ python -m pip install --upgrade pip
 
    ```bash
    pip install absl-py flax ml-collections optax wandb matplotlib tqdm \
-       networkx scikit-learn scipy trimesh einops plotly
+       networkx scikit-learn scipy trimesh einops plotly seaborn
    ```
 
 Verify your setup:
@@ -106,6 +106,28 @@ python -m manifold_pinns.pipeline.cli uae-eval square d4u6a4ww \
   --samples 8 \
   --output figures/square/run_d4u6a4ww_eval.png
 ```
+
+### Profiling the square UAE
+
+A short profiling script captures JAX traces for the square UAE training step (data loading included):
+
+```bash
+PYTHONPATH=. python profiles/profile_square_uae.py
+```
+
+Traces are written to `profiles/profiling/square_uae/`. Visualise them with TensorBoard:
+
+```bash
+tensorboard --logdir profiles/profiling/square_uae
+```
+
+Install the extra tooling once per environment:
+
+```bash
+pip install tensorboard
+```
+
+Open the provided URL in a browser to inspect timelines and kernels.
 
 ### Step 2 – PINN experiments
 

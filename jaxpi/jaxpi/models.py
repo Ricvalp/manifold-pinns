@@ -221,16 +221,24 @@ class MPINN:
             return state
 
         def step(state, batch, *args):
-            loss, grads = value_and_grad(self.loss)(
-                state.params, state.weights, batch, *args
-            )
+            def loss_with_aux(params, weights, batch, *args):
+                total_loss, losses = self.loss(params, weights, batch, *args)
+                return total_loss, losses
+
+            (loss, _), grads = value_and_grad(
+                loss_with_aux, has_aux=True
+            )(state.params, state.weights, batch, *args)
             state = state.apply_gradients(grads=grads)
             return loss, state
 
         def lbfgs_step(state, batch, *args):
-            loss, grads = value_and_grad(self.loss)(
-                state.params, state.weights, batch, *args
-            )
+            def loss_with_aux(params, weights, batch, *args):
+                total_loss, losses = self.loss(params, weights, batch, *args)
+                return total_loss, losses
+
+            (loss, _), grads = value_and_grad(
+                loss_with_aux, has_aux=True
+            )(state.params, state.weights, batch, *args)
             state = state.apply_lbfgs_gradients(grads=grads)
             return loss, state
 

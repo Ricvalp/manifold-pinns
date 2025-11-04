@@ -1,6 +1,7 @@
 */__pycache__*
-*.pyc
+*.pyc*
 *checkpoints*
 datasets/square/*.npy
 wandb/
-figures/
+*figures/
+*profiling/

@@ -2,9 +2,10 @@ from pathlib import Path
 
 import ml_collections
 from tqdm import tqdm
-from samplers import (
+from .samplers import (
     UniformICSampler,
     UniformSampler,
+    UniformBoundarySampler,
 )
 
 from jaxpi.utils import load_config

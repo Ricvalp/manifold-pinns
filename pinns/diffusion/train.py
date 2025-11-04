@@ -10,10 +10,10 @@ import json
 import jax
 import jax.numpy as jnp
 import ml_collections
-import models
+from . import models
 from tqdm import tqdm
 from jax.tree_util import tree_map
-from samplers import (
+from .samplers import (
     UniformICSampler,
     UniformSampler,
 )
@@ -23,7 +23,7 @@ from charts import (
 )
 
 
-from pinns.diffusion.plot import (
+from .plot import (
     plot_domains,
     plot_domains_3d,
     plot_domains_with_metric,
@@ -37,7 +37,7 @@ from pinns.diffusion.plot import (
 import wandb
 from jaxpi.utils import save_checkpoint, load_config
 
-from utils import set_profiler
+from .utils import set_profiler
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -141,12 +141,32 @@ def train_and_evaluate(config: ml_collections.ConfigDict):
 
     print("Waiting for JIT...")
 
+    debug_logged = False
+
     for step in tqdm(range(1, config.training.max_steps + 1), desc="Training"):
 
         # set_profiler(config.profiler, step, config.profiler.log_dir)
 
         batch = next(res_sampler), next(ics_sampler)
-        loss, model.state = model.step(model.state, batch)
+        result = model.step(model.state, batch)
+        if not debug_logged:
+            try:
+                result_len = len(result)
+            except TypeError:
+                result_len = None
+            print("[DEBUG] model.step return type:", type(result), "length:", result_len)
+            if isinstance(result, tuple):
+                print("[DEBUG] tuple element types:", [type(r) for r in result])
+            debug_logged = True
+        if isinstance(result, tuple):
+            if len(result) >= 2:
+                loss, model.state = result[:2]
+            else:
+                raise ValueError("model.step returned fewer than two outputs")
+        else:
+            raise ValueError(
+                f"Unexpected model.step output type {type(result)}; expected tuple"
+            )
 
         if step % config.wandb.log_every_steps == 0:
             wandb.log({"loss": loss}, step)
