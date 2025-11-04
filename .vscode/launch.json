@@ -20,6 +20,25 @@
             "env": {
                 "PYTHONPATH": "${workspaceFolder}"
             }
+        },
+        {
+            "name": "Eval PINN (diffusion + UAE)",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "manifold_pinns.pipeline.cli",
+            "args": [
+                "pinn",
+                "diffusion",
+                "square",
+                "--mode","eval",
+                "--override",
+                "autoencoder_checkpoint.checkpoint_path=universal_autoencoder/experiments/square/checkpoints/xxg0zjc1,autoencoder_checkpoint.step=240000"
+            ],
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}",
+            "env": {
+                "PYTHONPATH": "${workspaceFolder}"
+            }
         }
     ]
 }

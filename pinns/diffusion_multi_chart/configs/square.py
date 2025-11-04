@@ -8,7 +8,7 @@ def get_config():
     """Get the default hyperparameter configuration."""
     config = ml_collections.ConfigDict()
 
-    config.figure_path = "./figures/" + str(datetime.now().strftime("%Y%m%d-%H%M%S"))
+    config.figure_path = "./figures/" + datetime.now().strftime("%Y%m%d-%H%M%S")
 
     config.plot = False
     config.num_supernodes = 128
@@ -90,10 +90,7 @@ def get_config():
 
     # Saving
     config.saving = saving = ml_collections.ConfigDict()
-    saving.checkpoint_dir = (
-        "pinns/diffusion/square/checkpoints/"
-        + datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    )
+    saving.checkpoint_dir = "pinns/diffusion/square/checkpoints"
     saving.save_every_steps = 5000
     saving.num_keep_ckpts = 10
 

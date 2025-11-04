@@ -5,3 +5,4 @@ datasets/square/*.npy
 wandb/
 *figures/
 *profiling/
+*.npy

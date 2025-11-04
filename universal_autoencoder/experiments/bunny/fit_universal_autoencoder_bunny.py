@@ -47,13 +47,14 @@ def load_cfgs():
     dataset.normalize_charts = True
     dataset.t = 0.2
     dataset.rotate_and_scale = False
+    dataset.apply_deformation = False
 
     # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
     # # # # # # # # # # # # Training  # # # # # # # # # # # # # # # # # 
     # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 
     cfg.train = ml_collections.ConfigDict()
-    cfg.train.batch_size = 64
+    cfg.train.batch_size = 256
     cfg.train.lr = 1e-4
     cfg.train.num_steps = 3000000
     cfg.train.reg = "geodesic_preservation" # "geo+riemannian" # 
@@ -264,14 +265,6 @@ def run_experiment(cfg):
         recon_loss = jnp.sum((pred - points) ** 2, axis=-1).mean()
         geodesic_loss = geodesic_preservation_loss(distance_matrix[chart_id], coords).mean()
         return recon_loss + lamb * geodesic_loss, (recon_loss, geodesic_loss)
-
-
-    # @jax.jit
-    # def train_step_riemann(state, batch, key, lamb):
-    #     my_loss = lambda params: geo_riemann_loss_fn(params, batch, key, lamb)
-    #     (loss, aux), grads = jax.value_and_grad(my_loss, has_aux=True)(state.params)
-    #     state = state.apply_gradients(grads=grads)
-    #     return state, loss, aux, grads
 
     @jax.jit
     def train_step(state, batch, key):

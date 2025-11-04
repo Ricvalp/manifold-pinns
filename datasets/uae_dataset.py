@@ -11,6 +11,8 @@ import networkx as nx
 from sklearn.neighbors import KDTree
 import scipy.linalg
 from charts import fast_region_growing
+import matplotlib.pyplot as plt
+from datetime import datetime
 
 
 class UniversalAEDataset(data.Dataset):
@@ -31,6 +33,13 @@ class UniversalAEDataset(data.Dataset):
         self.config = config.dataset
         self.train = train
         self.t = config.dataset.t
+        figure_root = getattr(config, "figure_path", None)
+        if figure_root is not None:
+            timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+            self.preview_dir = Path(figure_root).expanduser() / timestamp
+        else:
+            self.preview_dir = Path(self.config.charts_path)
+        self.preview_dir.mkdir(parents=True, exist_ok=True)
         if self.config.create_dataset:
             m = Mesh(self.config.mesh_path)
             self.verts, self.connectivity = m.verts, m.connectivity
@@ -87,18 +96,45 @@ class UniversalAEDataset(data.Dataset):
 
             if i%self.config.save_charts_every==0:
                 Path(self.config.charts_path).mkdir(parents=True, exist_ok=True)
-                np.save(self.config.charts_path + f"/charts_{i}.npy", all_charts)
-                np.save(self.config.charts_path + f"/distance_matrix_{i}.npy", all_distance_matrix)
+                charts_file = Path(self.config.charts_path) / f"charts_{i}.npy"
+                distance_file = Path(self.config.charts_path) / f"distance_matrix_{i}.npy"
+                np.save(charts_file, all_charts)
+                np.save(distance_file, all_distance_matrix)
+
+                preview_path = self.preview_dir / f"charts_{i}_preview.png"
+                self._plot_charts_preview(charts_file, preview_path)
                 all_charts = []
                 all_distance_matrix = []
+
+        if all_charts:
+            Path(self.config.charts_path).mkdir(parents=True, exist_ok=True)
+            idx = self.config.iterations
+            charts_file = Path(self.config.charts_path) / f"charts_{idx}.npy"
+            distance_file = Path(self.config.charts_path) / f"distance_matrix_{idx}.npy"
+            np.save(charts_file, all_charts)
+            np.save(distance_file, all_distance_matrix)
+
+            preview_path = self.preview_dir / f"charts_{idx}_preview.png"
+            self._plot_charts_preview(charts_file, preview_path)
 
     def _load_charts_dataset(self):
         """Load pre-generated charts and split them into train/validation sets."""
 
         self.charts = []
         self.distance_matrix = []
-        chart_files = sorted([f for f in os.listdir(self.config.charts_path) if f.startswith("charts_") and f.endswith(".npy")])[:self.config.num_files]
-        distance_matrix_files = sorted([f for f in os.listdir(self.config.charts_path) if f.startswith("distance_matrix_") and f.endswith(".npy")])[:self.config.num_files]
+
+        chart_files = sorted(
+            f for f in os.listdir(self.config.charts_path)
+            if f.startswith("charts_") and f.endswith(".npy")
+        )
+        distance_matrix_files = sorted(
+            f for f in os.listdir(self.config.charts_path)
+            if f.startswith("distance_matrix_") and f.endswith(".npy")
+        )
+        num_files = getattr(self.config, "num_files", None)
+        if num_files is not None:
+            chart_files = chart_files[:num_files]
+            distance_matrix_files = distance_matrix_files[:num_files]
         
         assert len(chart_files) > 0, f"No chart files found in {self.config.charts_path}"
         assert len(distance_matrix_files) > 0, f"No distance matrix files found in {self.config.charts_path}"
@@ -118,6 +154,36 @@ class UniversalAEDataset(data.Dataset):
 
         self.charts = np.concatenate(self.charts, axis=0)
         self.distance_matrix = np.concatenate(self.distance_matrix, axis=0)
+
+    def _plot_charts_preview(self, charts_file: Path, output_path: Path, max_samples: int = 9) -> None:
+        """Create a preview figure with a subset of charts stored on disk."""
+        try:
+            charts = np.load(charts_file)
+        except FileNotFoundError:
+            return
+
+        if len(charts) == 0:
+            return
+
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+
+        num_samples = min(max_samples, len(charts))
+        cols = min(3, num_samples)
+        rows = int(np.ceil(num_samples / cols))
+
+        fig = plt.figure(figsize=(4 * cols, 4 * rows))
+        for idx in range(num_samples):
+            ax = fig.add_subplot(rows, cols, idx + 1, projection="3d")
+            pts = charts[idx]
+            ax.scatter(pts[:, 0], pts[:, 1], pts[:, 2], s=3)
+            ax.set_title(f"Chart {idx}")
+            ax.set_xticks([])
+            ax.set_yticks([])
+            ax.set_zticks([])
+
+        plt.tight_layout()
+        fig.savefig(output_path, dpi=300)
+        plt.close(fig)
 
     def _standardize_charts(self, charts):
         """Normalise charts around the origin and subsample them."""
@@ -164,7 +230,7 @@ class UniversalAEDataset(data.Dataset):
         # Apply rotation
         return (R @ self.charts[chart_id].T).T
 
-    def _get_rotated_scaled_deformed_points(self, chart_id, t=0.0,  rotate_and_scale=True):
+    def _get_rotated_scaled_deformed_points(self, chart_id, t=0.0,  rotate_and_scale=True, apply_deformation=True):
         """Apply rotation, scaling and a smooth diffeomorphic deformation."""
         if rotate_and_scale:
             # Generate random rotation matrix
@@ -196,12 +262,13 @@ class UniversalAEDataset(data.Dataset):
         else:
             points = self.charts[chart_id]
         
-        # Apply a smooth, invertible deformation (diffeomorphism)
-        M = np.random.normal(0, 1, (3, 3))
-        TrM = np.trace(M)
-        M = M - ( TrM * np.eye(3) / 3)
-        
-        points = (scipy.linalg.expm(t * M) @ points.T).T
+        if apply_deformation:
+            # Apply a smooth, invertible deformation (diffeomorphism)
+            M = np.random.normal(0, 1, (3, 3))
+            TrM = np.trace(M)
+            M = M - ( TrM * np.eye(3) / 3)
+            
+            points = (scipy.linalg.expm(t * M) @ points.T).T
         
         return points
 
@@ -214,7 +281,7 @@ class UniversalAEDataset(data.Dataset):
         supernode_idxs = np.random.permutation(self.num_points)[: self.config.num_supernodes]
         chart_id = np.random.randint(0, len(self.charts))
         # t = np.random.uniform(0, 0.2)
-        points = self._get_rotated_scaled_deformed_points(chart_id, t=self.t, rotate_and_scale=self.config.rotate_and_scale)
+        points = self._get_rotated_scaled_deformed_points(chart_id, t=self.t, rotate_and_scale=self.config.rotate_and_scale, apply_deformation=self.config.apply_deformation)
         if self.config.normalize_charts:
             std = points.std()
             points = points/std

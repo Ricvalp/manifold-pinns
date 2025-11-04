@@ -333,18 +333,6 @@ class MPINNSingleChart:
             # Grad Norm Weighting
             w = tree_map(lambda x: (mean_grad_norm / x), grad_norm_dict)
 
-        # elif self.config.weighting.scheme == "ntk":
-        #     # Compute the diagonal of the NTK of each loss
-        #     ntk = self.compute_diag_ntk(params, batch, *args)
-
-        #     # Compute the mean of the diagonal NTK corresponding to each loss
-        #     mean_ntk_dict = tree_map(lambda x: jnp.mean(x), ntk)
-
-        #     # Compute the average over all ntk means
-        #     mean_ntk = jnp.mean(jnp.stack(tree_leaves(mean_ntk_dict)))
-        #     # NTK Weighting
-        #     w = tree_map(lambda x: (mean_ntk / x), mean_ntk_dict)
-
         return w
 
     def create_functions(self):

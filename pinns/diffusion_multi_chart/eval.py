@@ -28,19 +28,21 @@ def evaluate(config: ml_collections.ConfigDict):
         Path(config.autoencoder_checkpoint.checkpoint_path) / "cfg.json",
     )
 
+    x, y, u0, boundaries_x, boundaries_y, charts3d = get_dataset(
+        autoencoder_config.dataset.charts_path,
+        sigma=1.0,
+    )
+
     (
         inv_metric_tensor,
         sqrt_det_g,
         decoder,
     ), d_params = get_metric_tensor_and_sqrt_det_g_grid_universal_autodecoder(
         autoencoder_config,
-        step=config.autoencoder_checkpoint.step,
+        cfg=config,
+        charts=charts3d,
+        coords=np.stack([x[0], y[0]], axis=-1),
         inverse=True,
-    )
-
-    x, y, u0, boundaries_x, boundaries_y, charts3d = get_dataset(
-        autoencoder_config.dataset.charts_path,
-        sigma=1.0,
     )
 
     # Initialize model

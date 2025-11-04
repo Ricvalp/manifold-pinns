@@ -32,6 +32,7 @@ from .plot import (
     plot_charts_sequence,
     plot_charts_sequence_with_solution,
     plot_charts_individually,
+    plot_results,
 )
 
 import wandb
@@ -59,9 +60,14 @@ def train_and_evaluate(config: ml_collections.ConfigDict):
         Path(config.autoencoder_checkpoint.checkpoint_path) / "cfg.json",
     )
 
-    checkpoint_dir = f"{config.saving.checkpoint_dir}/{run.id}"
-    Path(checkpoint_dir).mkdir(parents=True, exist_ok=True)
-    with open(checkpoint_dir + "/cfg.json", "w") as f:
+    checkpoint_root = Path(config.saving.checkpoint_dir)
+    run_checkpoint_dir = checkpoint_root / run.id
+    run_checkpoint_dir.mkdir(parents=True, exist_ok=True)
+
+    # Persist the updated saving path so downstream utilities pick the run-specific directory.
+    config.saving.checkpoint_dir = str(run_checkpoint_dir)
+
+    with open(run_checkpoint_dir / "cfg.json", "w") as f:
         json.dump(config.to_dict(), f, indent=4)
 
     X = np.linspace(0, 1, 50)
@@ -109,7 +115,7 @@ def train_and_evaluate(config: ml_collections.ConfigDict):
 
     plot_u0(x, y, u0, name=Path(config.figure_path) / "u0.png")
 
-    plot_domains_with_metric(x, y, sqrt_det_g, conditionings, name="sequence.png")
+    plot_domains_with_metric(x, y, sqrt_det_g, conditionings, name=Path(config.figure_path) / "sequence.png")
 
     ics_sampler = iter(
         UniformICSampler(
@@ -142,31 +148,14 @@ def train_and_evaluate(config: ml_collections.ConfigDict):
     print("Waiting for JIT...")
 
     debug_logged = False
+    step = 0
 
     for step in tqdm(range(1, config.training.max_steps + 1), desc="Training"):
 
         # set_profiler(config.profiler, step, config.profiler.log_dir)
 
         batch = next(res_sampler), next(ics_sampler)
-        result = model.step(model.state, batch)
-        if not debug_logged:
-            try:
-                result_len = len(result)
-            except TypeError:
-                result_len = None
-            print("[DEBUG] model.step return type:", type(result), "length:", result_len)
-            if isinstance(result, tuple):
-                print("[DEBUG] tuple element types:", [type(r) for r in result])
-            debug_logged = True
-        if isinstance(result, tuple):
-            if len(result) >= 2:
-                loss, model.state = result[:2]
-            else:
-                raise ValueError("model.step returned fewer than two outputs")
-        else:
-            raise ValueError(
-                f"Unexpected model.step output type {type(result)}; expected tuple"
-            )
+        loss, losses, model.state = model.step(model.state, batch)
 
         if step % config.wandb.log_every_steps == 0:
             wandb.log({"loss": loss}, step)
@@ -186,7 +175,32 @@ def train_and_evaluate(config: ml_collections.ConfigDict):
                     keep=config.saving.num_keep_ckpts,
                 )
 
+    params = model.state.params
+    x_jnp = jnp.asarray(x)
+    y_jnp = jnp.asarray(y)
+    ts_jnp = jnp.asarray(ts)
+
+    @jax.jit
+    def predict_all(times):
+        return jax.vmap(lambda t: model.u_pred_fn(params, x_jnp, y_jnp, t))(times)
+
+    u_preds = np.asarray(predict_all(ts_jnp))
+
+    plot_results(
+        x,
+        y,
+        ts,
+        u_preds,
+        save_dir=config.figure_path,
+        prefix="train_solution",
+        num_snapshots=10,
+        log_to_wandb=True,
+        wandb_key="solution_snapshots",
+        wandb_step=step,
+    )
+
     return model
+
 
 
 
