@@ -3,7 +3,7 @@ from pathlib import Path
 import ml_collections
 from tqdm import tqdm
 
-from samplers import (
+from pinns.wave.samplers import (
     UniformICSampler,
     UniformSampler,
 )

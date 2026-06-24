@@ -3,7 +3,7 @@ import numpy as np
 from datetime import datetime
 
 import ml_collections
-import models
+from pinns.wave import models
 
 from pinns.wave.plot import plot_solutions, plot_2d_solutions
 from jaxpi.utils import restore_checkpoint, load_config

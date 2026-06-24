@@ -10,13 +10,21 @@ This repository keeps experiment-specific code paths independent (copy-first phi
 
 ## Environment
 
-All commands below assume the repository root as the working directory and `PYTHONPATH=.`, e.g.
+All commands below assume the repository root as the working directory. Install the
+local `jaxpi` package and this repository in editable mode:
 
 ```bash
-export PYTHONPATH=.
+pip install -e ./jaxpi
+pip install -e .
 ```
 
-The project uses `jax`, `flax`, `ml_collections`, `optax`, `torch`, `wandb` and plotting dependencies. Install requirements using your preferred environment manager.
+The root `pyproject.toml` and `requirements.txt` pin compatible major versions
+for JAX, Flax, Optax, NumPy, SciPy, NetworkX, Torch, Matplotlib, Weights &
+Biases and pytest. The `Makefile` provides the same install command:
+
+```bash
+make install
+```
 
 ## Quick Start via CLI
 
@@ -57,6 +65,12 @@ python -m manifold_pinns.pipeline.cli uae coil \
   --override "train.lr=5e-5,wandb.use=False"
 ```
 
+Fast synthetic smoke check:
+
+```bash
+python -m manifold_pinns.pipeline.cli uae coil --smoke --override "wandb.use=False"
+```
+
 ### Step 2 – PINN experiments
 
 ```bash
@@ -68,6 +82,12 @@ python -m manifold_pinns.pipeline.cli pinn wave square --mode train
 
 # Diffusion example
 python -m manifold_pinns.pipeline.cli pinn diffusion square --mode train
+```
+
+Fast synthetic Eikonal smoke check:
+
+```bash
+python -m manifold_pinns.pipeline.cli pinn eikonal coil --mode smoke --override "wandb.use=False"
 ```
 
 Evaluation and data generation reuse the same entry point; just change `--mode` and optionally override paths:
@@ -99,6 +119,9 @@ The scripts remain copy-oriented; each experiment keeps bespoke configs, sampler
 - `universal_autoencoder/experiments/<dataset>/`: per-dataset UAE configurations with `run_experiment` helpers used by the CLI.
 - `pinns/<experiment>/`: experiment-specific PINN stacks (diffusion, eikonal, wave) with independent configs and trainers.
 - `manifold_pinns/pipeline/`: new orchestration helpers and CLI for the three-stage workflow.
+- `manifold_pinns/geometry/`: shared metric, intrinsic operator and paired-overlap utilities.
+- `universal_autoencoder/monge.py`: selectable PCA/Monge chart decoder for atlas ablations.
+- `scripts/`: JSON-emitting profiling and benchmark helpers.
 
 ## Tips
 
@@ -112,7 +135,26 @@ The scripts remain copy-oriented; each experiment keeps bespoke configs, sampler
 To verify the repository after changes:
 
 ```bash
-python -m compileall manifold_pinns pinns universal_autoencoder datasets
+pytest -q
+python -m compileall manifold_pinns pinns universal_autoencoder datasets jaxpi
 ```
 
-This ensures all Python modules import without syntax errors (run it inside your virtual environment).
+This ensures the focused correctness tests pass and all Python modules compile
+inside your virtual environment. Equivalent Make target:
+
+```bash
+make test
+```
+
+## Profiling
+
+Compact JSON benchmark commands:
+
+```bash
+python scripts/profile_eikonal_step.py
+python scripts/benchmark_metric_batch.py
+```
+
+`profile_eikonal_step.py` reports compile time and steady-state synthetic
+Eikonal step timing. `benchmark_metric_batch.py` reports batched decoder
+Jacobian/metric timing and metric-conditioning diagnostics.

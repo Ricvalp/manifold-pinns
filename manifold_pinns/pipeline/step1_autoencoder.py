@@ -12,6 +12,7 @@ def train_autoencoder(
     overrides: Optional[Mapping[str, Any]] = None,
     *,
     create_dataset: bool = False,
+    smoke: bool = False,
 ) -> ml_collections.ConfigDict:
     """Train the universal autoencoder for a specific dataset.
 
@@ -23,6 +24,11 @@ def train_autoencoder(
     Returns:
         The configuration that was used for training.
     """
+    if smoke:
+        from .smoke import run_uae_smoke
+
+        return run_uae_smoke(dataset_name, overrides=overrides)
+
     module = get_module(dataset_name)
     cfg = build_config(dataset_name, overrides)
     cfg.dataset.create_dataset = create_dataset

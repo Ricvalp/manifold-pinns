@@ -2,17 +2,17 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 
 import ml_collections
-import models
+from pinns.eikonal import models
 from tqdm import tqdm
-from samplers import (
+from pinns.eikonal.samplers import (
     UniformBCSampler,
     UniformSampler,
     UniformBoundarySampler,
 )
 
-from jax import config
+from jax import config as jax_config
 
-config.update("jax_enable_x64", True)
+jax_config.update("jax_enable_x64", False)
 
 import pandas as pd
 import os
@@ -54,11 +54,25 @@ import wandb
 from jaxpi.utils import save_checkpoint, load_config
 from jaxpi.solution import get_final_solution
 
-from utils import set_profiler
+from pinns.eikonal.utils import set_profiler
 
 
 def train_and_evaluate(config: ml_collections.ConfigDict):
     """Train the eikonal PINN and evaluate checkpoints during training."""
+
+    if not hasattr(config, "runtime"):
+        config.runtime = ml_collections.ConfigDict()
+        config.runtime.enable_x64 = False
+    jax_config.update("jax_enable_x64", bool(config.runtime.enable_x64))
+
+    if not hasattr(config, "eikonal"):
+        config.eikonal = ml_collections.ConfigDict()
+        config.eikonal.enforce_source_bc = True
+        config.eikonal.source_idx = 0
+        config.eikonal.source_bc_weight = 1.0
+        config.eikonal.hard_source_ansatz = False
+    if config.eikonal.enforce_source_bc and "source" not in config.weighting.init_weights:
+        config.weighting.init_weights.source = config.eikonal.source_bc_weight
 
     wandb_config = config.wandb
     run = wandb.init(
@@ -113,6 +127,8 @@ def train_and_evaluate(config: ml_collections.ConfigDict):
         charts_path=config.dataset.charts_path,
         N=config.N,
         idxs=config.idxs,
+        enforce_source_bc=config.eikonal.enforce_source_bc,
+        source_idx=config.eikonal.source_idx,
     )
 
     np.save(
@@ -241,6 +257,7 @@ def train_and_evaluate(config: ml_collections.ConfigDict):
         charts_path=config.dataset.charts_path,
         N=config.logging.num_eval_points,
         seed=config.bcs_seed,
+        enforce_source_bc=False,
     )
     max_eval_points = max([len(eval_x[key]) for key in eval_x.keys()])
     eval_idxs = {
@@ -288,10 +305,19 @@ def train_and_evaluate(config: ml_collections.ConfigDict):
         # set_profiler(config.profiler, step, config.profiler.log_dir)
 
         batch = next(res_sampler), next(boundary_sampler), next(bcs_sampler)
-        loss, model.state = model.step(model.state, batch)
+        loss, aux, model.state = model.step(model.state, batch)
 
         if step % config.logging.log_every_steps == 0:
-            wandb.log({"loss": loss}, step)
+            wandb.log(
+                {
+                    "loss": loss,
+                    "bcs_loss": aux["bcs"],
+                    "res_loss": aux["res"],
+                    "boundary_loss": aux["bc"],
+                    **({"source_bc_loss": aux["source"]} if "source" in aux else {}),
+                },
+                step,
+            )
 
         if step % config.logging.eval_every_steps == 0:
             losses, eval_loss = model.eval(

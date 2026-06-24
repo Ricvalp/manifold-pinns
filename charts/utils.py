@@ -31,7 +31,7 @@ def calculate_distance_matrix_single_process(chart_data, nearest_neighbors):
         raise ValueError(
             f"Graph for chart {chart_id} is not a single connected component"
         )
-    distances = dict(nx.all_pairs_shortest_path_length(G, cutoff=None))
+    distances = dict(nx.all_pairs_dijkstra_path_length(G, cutoff=None, weight="weight"))
     distances_matrix = np.zeros((len(pts), len(pts)))
     for j in range(len(pts)):
         for k in range(len(pts)):

@@ -178,10 +178,19 @@ class MPINN:
         # Compute losses
         losses = self.losses(params, batch, *args)
         # Compute weighted loss
-        weighted_losses = tree_map(lambda x, y: x * y, losses, weights)
+        weighted_losses = {
+            key: value * weights[key] if key in weights else value
+            for key, value in losses.items()
+        }
         # Sum weighted losses
         loss = tree_reduce(lambda x, y: x + y, weighted_losses)
-        return loss
+        aux = {
+            "losses": losses,
+            "weighted_losses": weighted_losses,
+            "total": loss,
+            **losses,
+        }
+        return loss, aux
 
     def compute_weights(self, params, batch, *args):
         if self.config.weighting.scheme == "grad_norm":
@@ -221,18 +230,18 @@ class MPINN:
             return state
 
         def step(state, batch, *args):
-            loss, grads = value_and_grad(self.loss)(
+            (loss, aux), grads = value_and_grad(self.loss, has_aux=True)(
                 state.params, state.weights, batch, *args
             )
             state = state.apply_gradients(grads=grads)
-            return loss, state
+            return loss, aux, state
 
         def lbfgs_step(state, batch, *args):
-            loss, grads = value_and_grad(self.loss)(
+            (loss, aux), grads = value_and_grad(self.loss, has_aux=True)(
                 state.params, state.weights, batch, *args
             )
             state = state.apply_lbfgs_gradients(grads=grads)
-            return loss, state
+            return loss, aux, state
 
         def eval(state, batch, eval_x=None, eval_y=None, u_eval=None, bcs_charts=None):
             losses = self.losses(state.params, batch)
@@ -304,10 +313,19 @@ class MPINNSingleChart:
         # Compute losses
         losses = self.losses(params, batch, *args)
         # Compute weighted loss
-        weighted_losses = tree_map(lambda x, y: x * y, losses, weights)
+        weighted_losses = {
+            key: value * weights[key] if key in weights else value
+            for key, value in losses.items()
+        }
         # Sum weighted losses
         loss = tree_reduce(lambda x, y: x + y, weighted_losses)
-        return loss, losses
+        aux = {
+            "losses": losses,
+            "weighted_losses": weighted_losses,
+            "total": loss,
+            **losses,
+        }
+        return loss, aux
 
     def compute_weights(self, params, batch, *args):
         if self.config.weighting.scheme == "grad_norm":
@@ -354,11 +372,11 @@ class MPINNSingleChart:
             return loss, aux, state
 
         def lbfgs_step(state, batch, *args):
-            loss, grads = value_and_grad(self.loss)(
+            (loss, aux), grads = value_and_grad(self.loss, has_aux=True)(
                 state.params, state.weights, batch, *args
             )
             state = state.apply_lbfgs_gradients(grads=grads)
-            return loss, state
+            return loss, aux, state
 
         def eval(state, batch, eval_x=None, eval_y=None, u_eval=None, bcs_charts=None):
             losses = self.losses(state.params, batch)

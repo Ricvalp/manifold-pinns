@@ -67,6 +67,11 @@ def run_pinn_experiment(
     Returns:
         The configuration that was used for the run.
     """
+    if mode == "smoke":
+        from .smoke import run_pinn_smoke
+
+        return run_pinn_smoke(experiment, config_name, overrides=overrides)
+
     runner = _load_callable(experiment, mode)
     cfg = _load_config(experiment, config_name)
     cfg.mode = mode

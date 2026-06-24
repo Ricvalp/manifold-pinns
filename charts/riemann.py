@@ -12,6 +12,7 @@ from flax.training import train_state
 from tqdm import tqdm
 
 from universal_autoencoder import UniversalAutoencoder, ModulatedSIREN, UniversalAutoencoderGrid, UniversalAutoencoderTestTime
+from manifold_pinns.geometry.metrics import inv_2x2_spd
 
 
 class InducedRiemannianMetric(nn.Module):
@@ -31,7 +32,7 @@ class InducedInverseRiemannianMetric(nn.Module):
         self.jac = jax.vmap(jax.jacfwd(self.phi), (0))
 
     def __call__(self, z):
-        return jnp.linalg.inv(self.jac(z).transpose(0, 2, 1) @ self.jac(z))
+        return inv_2x2_spd(self.jac(z).transpose(0, 2, 1) @ self.jac(z))
 
 
 def sqrt_det_g(g):
@@ -95,7 +96,7 @@ def _get_metric_tensor_and_sqrt_det_g_universal_autodecoder(autoencoder_cfg, cfg
     def induced_inverse_riemannian_metric(conditioning, z):
         phi = lambda x, conditioning: decoder.apply({"params": d_params}, x, conditioning)
         J = jax.vmap(jax.jacfwd(phi, argnums=0), (0, None))(z, conditioning)[:, 0, :, :]
-        return jnp.linalg.inv(J.transpose(0, 2, 1) @ J)
+        return inv_2x2_spd(J.transpose(0, 2, 1) @ J)
 
     def sqrt_det_g(conditioning, z):
         return jnp.sqrt(jnp.linalg.det(induced_riemannian_metric(conditioning, z)))
@@ -154,7 +155,7 @@ def get_metric_tensor_and_sqrt_det_g_grid_universal_autodecoder(autoencoder_cfg,
     def induced_inverse_riemannian_metric(conditioning, z):
         phi = lambda x, conditioning: decoder.apply({"params": d_params}, x, conditioning)
         J = jax.vmap(jax.jacfwd(phi, argnums=0), (0, None))(z, conditioning)[:, 0, :, :]
-        return jnp.linalg.inv(J.transpose(0, 2, 1) @ J)
+        return inv_2x2_spd(J.transpose(0, 2, 1) @ J)
 
     def sqrt_det_g(conditioning, z):
         return jnp.sqrt(jnp.linalg.det(induced_riemannian_metric(conditioning, z)))
@@ -222,7 +223,7 @@ def get_metric_tensor_and_sqrt_det_g_universal_autodecoder(autoencoder_cfg, cfg,
     def induced_inverse_riemannian_metric(conditioning, z):
         phi = lambda x, conditioning: decoder.apply({"params": d_params}, x, conditioning)
         J = jax.vmap(jax.jacfwd(phi, argnums=0), (0, None))(z, conditioning)[:, 0, :, :]
-        return jnp.linalg.inv(J.transpose(0, 2, 1) @ J)
+        return inv_2x2_spd(J.transpose(0, 2, 1) @ J)
 
     def sqrt_det_g(conditioning, z):
         return jnp.sqrt(jnp.linalg.det(induced_riemannian_metric(conditioning, z)))
@@ -265,7 +266,7 @@ def compute_norm_g_ginv_from_params(params, decoder_fn, noise_scale=0.1):
     J = vmap(jax.jacfwd(d))(all_points)
     J_T = jnp.transpose(J, (0, 2, 1))
     g = jnp.matmul(J_T, J)
-    g_inv = jnp.linalg.inv(g)
+    g_inv = inv_2x2_spd(g)
     norm_g = jnp.linalg.norm(g, axis=(1, 2))
     norm_g_inv = jnp.linalg.norm(g_inv, axis=(1, 2))
 
@@ -306,7 +307,7 @@ def compute_norm_g_ginv_from_params_autoencoder(
     J = vmap(jax.jacfwd(d))(all_points)
     J_T = jnp.transpose(J, (0, 2, 1))
     g = jnp.matmul(J_T, J)
-    g_inv = jnp.linalg.inv(g)
+    g_inv = inv_2x2_spd(g)
     norm_g = jnp.linalg.norm(g, axis=(1, 2))
     norm_g_inv = jnp.linalg.norm(g_inv, axis=(1, 2))
 

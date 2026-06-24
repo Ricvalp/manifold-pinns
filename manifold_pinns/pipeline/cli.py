@@ -46,6 +46,11 @@ def main(argv=None) -> None:
         help="Regenerate the dataset before training.",
     )
     uae_parser.add_argument(
+        "--smoke",
+        action="store_true",
+        help="Run a fast synthetic UAE smoke check instead of training.",
+    )
+    uae_parser.add_argument(
         "--override",
         type=str,
         help="Comma separated key=value pairs for config overrides.",
@@ -56,7 +61,7 @@ def main(argv=None) -> None:
     pinn_parser.add_argument("config", help="Configuration module name.")
     pinn_parser.add_argument(
         "--mode",
-        choices=["train", "eval", "generate_data"],
+        choices=["train", "eval", "generate_data", "smoke"],
         default="train",
         help="Execution mode for the PINN experiment.",
     )
@@ -75,7 +80,12 @@ def main(argv=None) -> None:
     if args.command == "dataset":
         generate_dataset(args.name, overrides)
     elif args.command == "uae":
-        train_autoencoder(args.name, overrides, create_dataset=args.create_dataset)
+        train_autoencoder(
+            args.name,
+            overrides,
+            create_dataset=args.create_dataset,
+            smoke=args.smoke,
+        )
     elif args.command == "pinn":
         run_pinn_experiment(args.experiment, args.config, mode=args.mode, overrides=overrides)
     else:

@@ -10,10 +10,10 @@ import json
 import jax
 import jax.numpy as jnp
 import ml_collections
-import models
+from pinns.wave import models
 from tqdm import tqdm
 from jax.tree_util import tree_map
-from samplers import (
+from pinns.wave.samplers import (
     UniformICSampler,
     UniformSampler,
 )
@@ -37,7 +37,7 @@ from pinns.wave.plot import (
 import wandb
 from jaxpi.utils import save_checkpoint, load_config
 
-from utils import set_profiler
+from pinns.wave.utils import set_profiler
 
 import matplotlib.pyplot as plt
 import numpy as np

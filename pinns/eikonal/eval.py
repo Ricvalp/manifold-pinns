@@ -4,7 +4,7 @@ import logging
 import jax.numpy as jnp
 import numpy as np
 import ml_collections
-import models
+from pinns.eikonal import models
 from tqdm import tqdm
 
 from charts import (
@@ -21,7 +21,7 @@ from pinns.eikonal.utils import get_last_checkpoint_dir
 from jaxpi.utils import restore_checkpoint, load_config
 from jaxpi.solution import get_final_solution, load_solution, save_solution
 
-from plot import (
+from pinns.eikonal.plot import (
     plot_3d_level_curves,
     plot_3d_solution,
     plot_charts_solution,

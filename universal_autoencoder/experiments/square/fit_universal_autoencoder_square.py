@@ -17,6 +17,8 @@ from flax.training import checkpoints
 import json
 from universal_autoencoder.upt_autoencoder_grid import UniversalAutoencoderGrid
 from universal_autoencoder.siren import ModulatedSIREN
+from universal_autoencoder.losses import make_loss_fn
+from manifold_pinns.geometry.metrics import inv_2x2_spd
 from datasets.uae_square import UniversalAESquareDataset
 
 # Disable JIT compilation for easier debugging
@@ -29,6 +31,14 @@ def load_cfgs():
 
     cfg.seed = 0
     cfg.figure_path = "figures/square/"
+
+    cfg.uae = ml_collections.ConfigDict()
+    cfg.uae.architecture = "upt_siren"
+    cfg.uae.decoder = "film_siren"
+    cfg.uae.monge = ml_collections.ConfigDict()
+    cfg.uae.monge.use_inplane_residual = False
+    cfg.uae.monge.height_network = "quadratic"
+    cfg.uae.monge.conditioning = "pca"
 
     # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
     # # # # # # # # # # # # Dataset # # # # # # # # # # # # # # # # # #
@@ -52,13 +62,20 @@ def load_cfgs():
     cfg.train.batch_size = 64
     cfg.train.lr = 1e-4
     cfg.train.num_steps = 800000
-    cfg.train.reg = "geodesic_preservation" # "geo+riemannian" # 
+    cfg.train.reg = "reconstruction"
     cfg.train.noise_scale_riemannian = 0.01
     cfg.train.num_finetuning_steps = 0
     cfg.train.warmup_lamb_steps = 20000
     cfg.train.max_lamb = 0.0001
     cfg.train.lamb_decay_rate = 0.99995
     cfg.train.optimizer = "adam"
+    cfg.train.loss_weights = ml_collections.ConfigDict()
+    cfg.train.loss_weights.reconstruction = 1.0
+    cfg.train.loss_weights.geodesic = 0.0
+    cfg.train.loss_weights.riemannian = 0.0
+    cfg.train.loss_weights.immersion = 0.0
+    cfg.train.loss_weights.condition = 0.0
+    cfg.train.loss_weights.smooth = 0.0
 
     # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
     # # # # # # # # # # # Checkpoint # # # # # # # # # # # # # # # # # #
@@ -218,12 +235,17 @@ def run_experiment(cfg):
         recon_loss = jnp.sum((pred - points) ** 2, axis=-1).mean()
         return recon_loss
 
+    objective_loss_fn = make_loss_fn(
+        cfg,
+        reconstruction_loss=lambda params, batch, key: loss_fn(params, batch),
+    )
+
     @jax.jit
     def train_step(state, batch):
-        my_loss = lambda params: loss_fn(params, batch)
-        loss, grads = jax.value_and_grad(my_loss)(state.params)
+        my_loss = lambda params: objective_loss_fn(params, batch, None)
+        (loss, aux), grads = jax.value_and_grad(my_loss, has_aux=True)(state.params)
         state = state.apply_gradients(grads=grads)
-        return state, loss
+        return state, loss, aux
 
     batch_size = cfg.train.batch_size
     num_points = cfg.dataset.num_points
@@ -273,13 +295,14 @@ def run_experiment(cfg):
         try:
             batch = next(data_loader_iter)
             key, subkey = jax.random.split(key)
-            state, loss, = train_step(state, batch)
+            state, loss, aux = train_step(state, batch)
 
             if step % cfg.wandb.wandb_log_every == 0:
 
                 if cfg.wandb.use:
                     log_dict = {
                         "loss": loss,
+                        "recon_loss": aux["reconstruction"],
                     }
                     wandb.log(log_dict, step=step)
 
@@ -358,7 +381,7 @@ def test_reconstruction(state, data_loader, decoder_apply_fn, num_samples=5, nam
         J = jax.vmap(jax.jacfwd(d))(coords)[:, 0, :, :]
         J_T = jnp.transpose(J, (0, 2, 1))
         g = jnp.matmul(J_T, J)
-        g_inv = jnp.linalg.inv(g)
+        g_inv = inv_2x2_spd(g)
         return jnp.linalg.norm(g, axis=(1, 2)), jnp.linalg.norm(g_inv, axis=(1, 2))
 
     det_g, det_g_inv = riemannian_metric_norm(state.params, conditioning, points[..., :2])

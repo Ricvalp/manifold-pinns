@@ -2,7 +2,7 @@ from pathlib import Path
 
 import ml_collections
 from tqdm import tqdm
-from samplers import (
+from pinns.diffusion.samplers import (
     UniformICSampler,
     UniformSampler,
 )

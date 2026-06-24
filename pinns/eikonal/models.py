@@ -43,6 +43,13 @@ class Eikonal(MPINN):
             return jnp.mean((u_pred - bcs) ** 2)
 
         @partial(vmap, in_axes=(0, 0, 0, 0))
+        def compute_source_loss(params, x, y, bcs):
+            u_pred = vmap(self.u_net, (None, 0, 0))(params, x, y)
+            mask = jnp.isclose(bcs, 0.0, atol=1e-6)
+            denom = jnp.maximum(jnp.sum(mask), 1)
+            return jnp.sum(jnp.where(mask, (u_pred - bcs) ** 2, 0.0)) / denom
+
+        @partial(vmap, in_axes=(0, 0, 0, 0))
         def compute_res_loss(params, d_params, res_batches, std):
             x, y = res_batches[:, 0], res_batches[:, 1]
             r_pred = vmap(self.r_net, (None, None, 0, 0, None))(params, d_params, x, y, std)
@@ -64,12 +71,12 @@ class Eikonal(MPINN):
             b = boundary_idxs[1]
 
             boundary_pred_a = vmap(self.u_net, (None, 0, 0))(
-                jax.tree_map(lambda x: x[a], params),
+                jax.tree.map(lambda x: x[a], params),
                 xa,
                 ya,
             )
             boundary_pred_b = vmap(self.u_net, (None, 0, 0))(
-                jax.tree_map(lambda x: x[b], params),
+                jax.tree.map(lambda x: x[b], params),
                 xb,
                 yb,
             )
@@ -77,6 +84,7 @@ class Eikonal(MPINN):
             return jnp.mean(0.25 * (boundary_pred_a - boundary_pred_b) ** 2)
 
         self.compute_bcs_loss = compute_bcs_loss
+        self.compute_source_loss = compute_source_loss
         self.compute_res_loss = compute_res_loss
         self.compute_boundary_loss = compute_boundary_loss
 
@@ -120,6 +128,10 @@ class Eikonal(MPINN):
         bcs_loss = bcs_loss[self.bcs_charts]
         bcs_loss = jnp.mean(bcs_loss)
 
+        source_loss = self.compute_source_loss(params, x, y, bcs_values)
+        source_loss = source_loss[self.bcs_charts]
+        source_loss = jnp.mean(source_loss)
+
         res_loss = self.compute_res_loss(params, self.d_params, res_batches, self.std)
         res_loss = jnp.mean(res_loss)
 
@@ -129,6 +141,9 @@ class Eikonal(MPINN):
         boundary_loss = jnp.mean(boundary_loss)
 
         loss_dict = {"bcs": bcs_loss, "res": res_loss, "bc": boundary_loss}
+        eikonal_cfg = getattr(self.config, "eikonal", None)
+        if eikonal_cfg is not None and getattr(eikonal_cfg, "enforce_source_bc", True):
+            loss_dict["source"] = source_loss
 
         return loss_dict
 

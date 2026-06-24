@@ -216,22 +216,19 @@ def fast_region_growing(
 
     logging.info(f"Checking if the union of partitions covers all points")
 
-    all_partition_points = set()
-    for partition_points in partitions.values():
-        all_partition_points.update([tuple(p) for p in partition_points])
+    covered_point_ids = set(np.concatenate(list(partitions_idxs.values())).tolist())
+    input_point_ids = set(np.asarray(original_idxs).tolist())
 
-    all_input_points = set([tuple(p) for p in pts])
-
-    if len(all_partition_points) != len(all_input_points):
+    if covered_point_ids != input_point_ids:
         logging.warning(
-            f"Partitions only cover {len(all_partition_points)} points out of {len(all_input_points)} total points"
+            f"Partitions only cover {len(covered_point_ids)} points out of {len(input_point_ids)} total points"
         )
-        missing_points = all_input_points - all_partition_points
+        missing_points = input_point_ids - covered_point_ids
         logging.warning(f"Missing {len(missing_points)} points")
 
     else:
         logging.info(
-            f"Partitioning completed: all {len(all_partition_points)} points are covered by the partitions"
+            f"Partitioning completed: all {len(covered_point_ids)} points are covered by the partitions"
         )
 
     return partitions, partitions_idxs, pts[seed_points]
@@ -286,12 +283,17 @@ def reindex_charts(
         if key != 0:
             old_idxs[key + len_old_idxs - 1] = refined_idxs[key]
 
-    boundaries, boundary_indices = get_boundaries(old_charts)
+    boundaries, boundary_indices = get_boundaries(old_charts, old_idxs)
 
     return old_charts, old_idxs, boundaries, boundary_indices
 
 
-def get_boundaries(charts: List[jnp.ndarray]) -> Dict[Tuple[int, int], jnp.ndarray]:
+def get_boundaries(
+    charts: List[jnp.ndarray],
+    charts_idxs: Dict[int, List[int]] | None = None,
+    *,
+    tolerance: float = 1e-8,
+) -> Dict[Tuple[int, int], jnp.ndarray]:
     """
     Returns the boundaries between the charts as 3D points
 
@@ -304,24 +306,37 @@ def get_boundaries(charts: List[jnp.ndarray]) -> Dict[Tuple[int, int], jnp.ndarr
     boundaries = {}
     boundary_indices = {}
 
-    for i in tqdm(range(len(charts)), desc="Getting boundaries"):
-        for j in range(i + 1, len(charts)):
-            points_i = set(map(tuple, charts[i]))
-            points_j = set(map(tuple, charts[j]))
+    def _chart_keys():
+        return sorted(charts.keys()) if hasattr(charts, "keys") else range(len(charts))
 
-            boundary_points = points_i.intersection(points_j)
+    chart_keys = list(_chart_keys())
+    for pos, i in enumerate(tqdm(chart_keys, desc="Getting boundaries")):
+        for j in chart_keys[pos + 1 :]:
+            if charts_idxs is not None:
+                ids_i = np.asarray(charts_idxs[i])
+                ids_j = np.asarray(charts_idxs[j])
+                _, indices_i, indices_j = np.intersect1d(
+                    ids_i,
+                    ids_j,
+                    assume_unique=False,
+                    return_indices=True,
+                )
+            else:
+                tree_j = KDTree(np.asarray(charts[j]))
+                indices_i = []
+                indices_j = []
+                for idx_i, point in enumerate(np.asarray(charts[i])):
+                    matches = tree_j.query_ball_point(point, tolerance)
+                    for idx_j in matches:
+                        indices_i.append(idx_i)
+                        indices_j.append(idx_j)
+                indices_i = np.asarray(indices_i, dtype=np.int64)
+                indices_j = np.asarray(indices_j, dtype=np.int64)
 
-            if len(boundary_points) > 0:
-                boundaries[(i, j)] = np.array(list(boundary_points))
-
-                indices_i = [
-                    list(map(tuple, charts[i])).index(p) for p in boundary_points
-                ]
-                indices_j = [
-                    list(map(tuple, charts[j])).index(p) for p in boundary_points
-                ]
-                boundary_indices[(i, j)] = indices_i
-                boundary_indices[(j, i)] = indices_j
+            if len(indices_i) > 0:
+                boundaries[(i, j)] = np.asarray(charts[i])[indices_i]
+                boundary_indices[(i, j)] = indices_i.tolist()
+                boundary_indices[(j, i)] = indices_j.tolist()
 
     return boundaries, boundary_indices
 
@@ -451,6 +466,9 @@ def save_charts(
     with open(charts_path + "/charts_idxs.pkl", "wb") as f:
         pickle.dump(charts_idxs, f)
 
+    with open(charts_path + "/point_ids.pkl", "wb") as f:
+        pickle.dump(charts_idxs, f)
+
     if verts is not None:
         with open(charts_path + "/verts.pkl", "wb") as f:
             pickle.dump(verts, f)
@@ -489,7 +507,7 @@ def get_charts(
     else:
         raise NotImplementedError(f"Algorithm {charts_config.alg} not implemented")
 
-    boundaries, boundary_indices = get_boundaries(charts)
+    boundaries, boundary_indices = get_boundaries(charts, charts_idxs)
 
     return charts, charts_idxs, boundaries, boundary_indices, sampled_points
 

@@ -158,7 +158,13 @@ class UniformBoundarySampler(BaseSampler):
                         replace=False,
                     )
                     cur_pairs = [
-                        (outer_key, inner_key) for inner_key in inner_keys.tolist()
+                        (outer_key, inner_key)
+                        for inner_key in inner_keys.tolist()
+                        if min(
+                            self.boundary_x[outer_key][inner_key].shape[0],
+                            self.boundary_x[inner_key][outer_key].shape[0],
+                        )
+                        > 0
                     ]
                     pairs_idxs.append(cur_pairs)
 
@@ -169,15 +175,13 @@ class UniformBoundarySampler(BaseSampler):
                         a = cur_pair[0]
                         b = cur_pair[1]
 
+                        pair_size = min(
+                            self.boundary_x[a][b].shape[0],
+                            self.boundary_x[b][a].shape[0],
+                        )
                         idx_ = self.rng.integers(
                             0,
-                            self.boundary_x[a][b].shape[0],  # a, b
-                            size=(self.batch_size,),
-                        )
-
-                        _idx = self.rng.integers(
-                            0,
-                            self.boundary_x[b][a].shape[0],  # b, a
+                            pair_size,
                             size=(self.batch_size,),
                         )
 
@@ -190,8 +194,8 @@ class UniformBoundarySampler(BaseSampler):
                         )
                         batch_ba = np.stack(
                             [
-                                self.boundary_x[b][a][_idx],
-                                self.boundary_y[b][a][_idx],
+                                self.boundary_x[b][a][idx_],
+                                self.boundary_y[b][a][idx_],
                             ],
                             axis=1,
                         )

@@ -1,19 +1,16 @@
-"""Utilities for Step 0 – generating UAE training datasets."""
+"""Utilities for Step 0 - generating UAE training datasets."""
 
+from importlib import import_module
 from typing import Any, Mapping, Optional
 
 import ml_collections
 
-from universal_autoencoder.experiments.bunny import fit_universal_autoencoder_bunny as bunny_exp
-from universal_autoencoder.experiments.coil import fit_universal_autoencoder_coil as coil_exp
-from universal_autoencoder.experiments.square import fit_universal_autoencoder_square as square_exp
-
 from .utils import apply_overrides
 
 _EXPERIMENTS = {
-    "bunny": bunny_exp,
-    "coil": coil_exp,
-    "square": square_exp,
+    "bunny": "universal_autoencoder.experiments.bunny.fit_universal_autoencoder_bunny",
+    "coil": "universal_autoencoder.experiments.coil.fit_universal_autoencoder_coil",
+    "square": "universal_autoencoder.experiments.square.fit_universal_autoencoder_square",
 }
 
 
@@ -21,7 +18,7 @@ def get_module(dataset_name: str):
     """Return the dataset-specific experiment module."""
     if dataset_name not in _EXPERIMENTS:
         raise ValueError(f"Unknown dataset '{dataset_name}'.")
-    return _EXPERIMENTS[dataset_name]
+    return import_module(_EXPERIMENTS[dataset_name])
 
 
 def build_config(dataset_name: str, overrides: Optional[Mapping[str, Any]] = None) -> ml_collections.ConfigDict:

@@ -10,10 +10,10 @@ import json
 import jax
 import jax.numpy as jnp
 import ml_collections
-import models
+from pinns.diffusion import models
 from tqdm import tqdm
 from jax.tree_util import tree_map
-from samplers import (
+from pinns.diffusion.samplers import (
     UniformICSampler,
     UniformSampler,
 )
@@ -37,7 +37,7 @@ from pinns.diffusion.plot import (
 import wandb
 from jaxpi.utils import save_checkpoint, load_config
 
-from utils import set_profiler
+from pinns.diffusion.utils import set_profiler
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -146,10 +146,17 @@ def train_and_evaluate(config: ml_collections.ConfigDict):
         # set_profiler(config.profiler, step, config.profiler.log_dir)
 
         batch = next(res_sampler), next(ics_sampler)
-        loss, model.state = model.step(model.state, batch)
+        loss, aux, model.state = model.step(model.state, batch)
 
         if step % config.wandb.log_every_steps == 0:
-            wandb.log({"loss": loss}, step)
+            wandb.log(
+                {
+                    "loss": loss,
+                    "ics": aux["ics"],
+                    "res": aux["res"],
+                },
+                step,
+            )
         
         if config.weighting.scheme in ["grad_norm", "ntk"]:
             if step % config.weighting.update_every_steps == 0:

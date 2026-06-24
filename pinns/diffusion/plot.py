@@ -87,7 +87,7 @@ def plot_domains_with_metric(x, y, sqrt_det_g, conditionings, name=None):
 def plot_domains_3d(x, y, ics, decoder, d_params, name=None):
     fig = plt.figure(figsize=(10, 10))
     ax = fig.add_subplot(111, projection="3d")
-    decoder_params = [jax.tree_map(lambda x: x[i], d_params) for i in range(len(x))]
+    decoder_params = [jax.tree.map(lambda x: x[i], d_params) for i in range(len(x))]
     for i in range(len(x)):
         p = decoder.apply({"params": decoder_params[i]}, np.stack([x[i], y[i]], axis=1))
         color = plt.cm.tab10(i)
@@ -109,7 +109,7 @@ def plot_domains_3d_with_metric(x, y, decoder, sqrt_det_g, d_params, name=None):
 
     fig = plt.figure(figsize=(15, 5 * rows))
 
-    decoder_params = [jax.tree_map(lambda x: x[i], d_params) for i in range(len(x))]
+    decoder_params = [jax.tree.map(lambda x: x[i], d_params) for i in range(len(x))]
     for i in range(num_plots):
         ax = fig.add_subplot(rows, cols, i + 1, projection="3d")
         ax.set_title(f"Chart {i}")
@@ -137,7 +137,7 @@ def plot_combined_3d_with_metric(x, y, decoder, sqrt_det_g, d_params, name=None)
     ax = fig.add_subplot(111, projection="3d")
     ax.set_title("Combined 3D Plot with Metric Coloring")
 
-    decoder_params = [jax.tree_map(lambda x: x[i], d_params) for i in range(len(x))]
+    decoder_params = [jax.tree.map(lambda x: x[i], d_params) for i in range(len(x))]
     for i in range(len(x)):
         # Decode the 2D points to 3D using the decoder function
         points_3d = decoder.apply(
@@ -566,4 +566,3 @@ def plot_charts_individually(charts, ts, values=None, figsize=(8, 8), dpi=300,
         
         # Close the figure to free memory
         plt.close(fig)
-

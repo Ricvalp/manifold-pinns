@@ -2,7 +2,7 @@ from pathlib import Path
 
 import ml_collections
 from tqdm import tqdm
-from samplers import (
+from pinns.eikonal.samplers import (
     UniformBCSampler,
     UniformSampler,
     UniformBoundarySampler,
@@ -68,6 +68,8 @@ def generate_data(config: ml_collections.ConfigDict):
         charts_path=config.dataset.charts_path,
         N=config.N,
         idxs=config.idxs,
+        enforce_source_bc=getattr(getattr(config, "eikonal", None), "enforce_source_bc", True),
+        source_idx=getattr(getattr(config, "eikonal", None), "source_idx", 0),
     )
 
     Path(config.figure_path).mkdir(parents=True, exist_ok=True)

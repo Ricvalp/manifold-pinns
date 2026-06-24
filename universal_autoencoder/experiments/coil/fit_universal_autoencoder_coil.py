@@ -17,6 +17,8 @@ from flax.training import checkpoints
 import json
 from universal_autoencoder.upt_autoencoder import UniversalAutoencoder
 from universal_autoencoder.siren import ModulatedSIREN
+from universal_autoencoder.losses import make_loss_fn
+from manifold_pinns.geometry.metrics import inv_2x2_spd
 from datasets.uae_dataset import UniversalAEDataset
 
 
@@ -26,6 +28,14 @@ def load_cfgs():
 
     cfg.seed = 0
     cfg.figure_path = "figures/fit_universal_autoencoder_coil"
+
+    cfg.uae = ml_collections.ConfigDict()
+    cfg.uae.architecture = "upt_siren"
+    cfg.uae.decoder = "film_siren"
+    cfg.uae.monge = ml_collections.ConfigDict()
+    cfg.uae.monge.use_inplane_residual = False
+    cfg.uae.monge.height_network = "quadratic"
+    cfg.uae.monge.conditioning = "pca"
 
     # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
     # # # # # # # # # # # # Dataset # # # # # # # # # # # # # # # # # #
@@ -64,6 +74,14 @@ def load_cfgs():
     cfg.train.max_lamb = 0.0001
     cfg.train.lamb_decay_rate = 0.99995
     cfg.train.optimizer = "adam"
+    cfg.train.loss_weights = ml_collections.ConfigDict()
+    cfg.train.loss_weights.reconstruction = 1.0
+    cfg.train.loss_weights.geodesic = 3.0
+    cfg.train.loss_weights.riemannian = 1.0
+    cfg.train.loss_weights.immersion = 0.0
+    cfg.train.loss_weights.condition = 0.0
+    cfg.train.loss_weights.smooth = 0.0
+    cfg.train.geodesic_num_pairs = 4096
 
     # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
     # # # # # # # # # # # Checkpoint # # # # # # # # # # # # # # # # # #
@@ -230,7 +248,7 @@ def run_experiment(cfg):
         J = jax.vmap(jax.jacfwd(d))(coords)[:, 0, :, :]
         J_T = jnp.transpose(J, (0, 2, 1))
         g = jnp.matmul(J_T, J)
-        g_inv = jnp.linalg.inv(g)
+        g_inv = inv_2x2_spd(g)
         return jnp.mean(jnp.absolute(g)) + 0.1 * jnp.mean(jnp.absolute(g_inv))
 
     distance_matrix = jnp.array(dataset.distance_matrix)
@@ -240,8 +258,7 @@ def run_experiment(cfg):
     val_exmp_chart, val_exmp_supernode_idxs, val_exmp_chart_id = next(iter(val_data_loader))
     plot_dataset(val_exmp_chart, val_exmp_supernode_idxs, distance_matrix[val_exmp_chart_id], name=figure_path + "/coil_dataset_with_supernodes_val.png")
 
-    def geo_riemann_loss_fn(params, batch, key, lamb=1.0):
-
+    def _loss_components(params, batch, key):
         points, supernode_idxs, chart_id = batch
         pred, coords, conditioning = state.apply_fn({"params": params}, points, supernode_idxs)
         recon_loss = jnp.sum((pred - points) ** 2, axis=-1).mean()
@@ -254,16 +271,36 @@ def run_experiment(cfg):
         geodesic_loss = geodesic_preservation_loss(distance_matrix[chart_id], coords).mean()
         riemannian_loss = riemannian_metric_loss(params, conditioning, coords + noise).mean()
 
-        return recon_loss + lamb * (geodesic_loss + riemannian_loss), (recon_loss, geodesic_loss, riemannian_loss)
+        return recon_loss, geodesic_loss, riemannian_loss
 
+    def reconstruction_component(params, batch, key):
+        recon_loss, _, _ = _loss_components(params, batch, key)
+        return recon_loss
 
-    def geo_loss_fn(params, batch, key, lamb=3.0):
-        points, supernode_idxs, chart_id = batch
-        pred, coords, conditioning = state.apply_fn({"params": params}, points, supernode_idxs)
-        recon_loss = jnp.sum((pred - points) ** 2, axis=-1).mean()
-        geodesic_loss = geodesic_preservation_loss(distance_matrix[chart_id], coords).mean()
-        return recon_loss + lamb * geodesic_loss, (recon_loss, geodesic_loss)
+    def geodesic_component(params, batch, key):
+        _, geodesic_loss, _ = _loss_components(params, batch, key)
+        return geodesic_loss
 
+    def riemannian_component(params, batch, key):
+        _, _, riemannian_loss = _loss_components(params, batch, key)
+        return riemannian_loss
+
+    objective_loss_fn = make_loss_fn(
+        cfg,
+        reconstruction_loss=reconstruction_component,
+        geodesic_loss=geodesic_component,
+        riemannian_loss=riemannian_component,
+    )
+
+    def geo_riemann_loss_fn(params, batch, key, lamb=1.0):
+        recon_loss, geodesic_loss, riemannian_loss = _loss_components(params, batch, key)
+        total = recon_loss + lamb * (geodesic_loss + riemannian_loss)
+        return total, {
+            "reconstruction": recon_loss,
+            "geodesic": geodesic_loss,
+            "riemannian": riemannian_loss,
+            "total": total,
+        }
 
     # @jax.jit
     # def train_step_riemann(state, batch, key, lamb):
@@ -274,7 +311,7 @@ def run_experiment(cfg):
 
     @jax.jit
     def train_step(state, batch, key):
-        my_loss = lambda params: geo_loss_fn(params, batch, key)
+        my_loss = lambda params: objective_loss_fn(params, batch, key)
         (loss, aux), grads = jax.value_and_grad(my_loss, has_aux=True)(state.params)
         state = state.apply_gradients(grads=grads)
         return state, loss, aux, grads
@@ -336,33 +373,22 @@ def run_experiment(cfg):
                 if step % cfg.wandb.log_riemann_every == 0:
                     val_batch = next(iter(val_data_loader)) 
                     loss_riemann, aux_riemann = geodesic_riemann_loss_fn(state.params, val_batch, subkey, lamb=0.0)
-                    wandb.log({"riemannian_loss": aux_riemann[2]}, step=step)
+                    wandb.log({"riemannian_loss": aux_riemann["riemannian"]}, step=step)
                     name = figure_path + f"/reconstruction_samples_riemannian_loss_{step}.png"
                     test_reconstruction(state, val_data_loader, decoder_apply_fn, name=name)
                     wandb.log({"reconstruction_samples": wandb.Image(name)}, step=step)
                     wandb.log({
-                        "val_recon_loss": aux_riemann[0],
-                        "val_geodesic_loss": aux_riemann[1],
-                        "val_riemannian_loss": aux_riemann[2],
+                        "val_recon_loss": aux_riemann["reconstruction"],
+                        "val_geodesic_loss": aux_riemann["geodesic"],
+                        "val_riemannian_loss": aux_riemann["riemannian"],
                     }, step=step)
 
-                if cfg.train.reg == "geo+riemannian":
-                    log_dict = {
-                        "loss": loss,
-                        "recon_loss": aux[0],
-                        "geodesic_loss": aux[1],
-                        "riemannian_loss": aux[2],
-                    }
-                elif cfg.train.reg == "geodesic_preservation":
-                    log_dict = {
-                        "loss": loss,
-                        "recon_loss": aux[0],
-                        "geodesic_loss": aux[1],
-                    }
-                elif cfg.train.reg == "none":
-                    log_dict = {
-                        "loss": loss,
-                    }
+                log_dict = {
+                    "loss": loss,
+                    "recon_loss": aux["reconstruction"],
+                    "geodesic_loss": aux["geodesic"],
+                    "riemannian_loss": aux["riemannian"],
+                }
 
                 if cfg.wandb.use:
                     wandb.log(log_dict, step=step)
@@ -442,7 +468,7 @@ def test_reconstruction(state, data_loader, decoder_apply_fn, num_samples=5, nam
         J = jax.vmap(jax.jacfwd(d))(coords)[:, 0, :, :]
         J_T = jnp.transpose(J, (0, 2, 1))
         g = jnp.matmul(J_T, J)
-        g_inv = jnp.linalg.inv(g)
+        g_inv = inv_2x2_spd(g)
         return jnp.linalg.norm(g, axis=(1, 2)), jnp.linalg.norm(g_inv, axis=(1, 2))
 
     det_g, det_g_inv = riemannian_metric_norm(state.params, conditioning, coords)

@@ -10,8 +10,17 @@ def get_config():
 
     config.plot = False
 
+    config.runtime = ml_collections.ConfigDict()
+    config.runtime.enable_x64 = False
+
     config.mode = "train"
     config.N = 25
+
+    config.eikonal = ml_collections.ConfigDict()
+    config.eikonal.enforce_source_bc = True
+    config.eikonal.source_idx = 0
+    config.eikonal.source_bc_weight = 1.0
+    config.eikonal.hard_source_ansatz = False
 
     # Autoencoder checkpoint
     config.autoencoder_checkpoint = ml_collections.ConfigDict()
@@ -83,7 +92,7 @@ def get_config():
     config.weighting = weighting = ml_collections.ConfigDict()
     weighting.scheme = "grad_norm"
     weighting.init_weights = ml_collections.ConfigDict(
-        {"bcs": 1.0, "res": 1.0, "bc": 1.0}
+        {"bcs": 1.0, "res": 1.0, "bc": 1.0, "source": 1.0}
     )
     weighting.momentum = 0.9
     weighting.update_every_steps = 200
