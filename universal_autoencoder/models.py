@@ -6,7 +6,7 @@ from universal_autoencoder.monge import fit_pca_monge_atlas, fit_pca_monge_chart
 
 
 def get_uae_architecture(cfg):
-    """Return the configured UAE architecture name with legacy defaults."""
+    """Return the configured UAE architecture name with the current default."""
 
     if hasattr(cfg, "uae") and hasattr(cfg.uae, "architecture"):
         return cfg.uae.architecture

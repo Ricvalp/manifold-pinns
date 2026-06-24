@@ -73,7 +73,7 @@ def build_overlap_pairs_kdtree(
 ) -> OverlapPairs:
     """Build paired overlaps by tolerance matching in ambient space.
 
-    This is a legacy fallback for data without stable global point IDs.
+    This fallback is for data without stable global point IDs.
     """
 
     src_x = np.asarray(ambient_by_chart[src_chart])

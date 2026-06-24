@@ -6,7 +6,8 @@ End-to-end tooling for solving physics-informed neural networks (PINNs) on curve
 1. **UAE training** – learn a shared atlas of decoders.
 2. **PINN training** – solve downstream PDEs on the learned manifolds.
 
-This repository keeps experiment-specific code paths independent (copy-first philosophy) while providing light-weight orchestration utilities and documentation to glue the stages together.
+The refactor centralizes reusable geometry, overlap, chart, metric, and smoke-test
+utilities under `manifold_pinns/`, with the CLI as the supported entry point.
 
 ## Environment
 
@@ -98,27 +99,25 @@ python -m manifold_pinns.pipeline.cli pinn eikonal coil \
   --override "eval.checkpoint_dir=./pinns/eikonal/coil/checkpoints/latest"
 ```
 
-## Convenience Scripts
+## Make Targets
 
-Legacy shell scripts now delegate to the CLI while retaining their original interfaces:
+The top-level Makefile wraps the supported developer workflows:
 
-| Stage | Script | Notes |
-|-------|--------|-------|
-| Step 0 | `./generate_uae_dataset.sh [bunny\|coil\|square]` | Generates UAE patches |
-| Step 1 | `./train_uae.sh [bunny\|coil\|square]` | Trains the UAE |
-| Step 2 | `./train_eikonal.sh [dataset [mode [chart]]]` | Trains/evaluates eikonal PINNs |
-| Step 2 | `./eval_eikonal.sh [dataset [checkpoint [chart]]]` | Evaluates eikonal PINNs |
-| Step 2 | `./train_wave.sh` | Trains the wave PINN |
-| Step 2 | `./eval_wave.sh [checkpoint [step]]` | Evaluates the wave PINN |
-
-The scripts remain copy-oriented; each experiment keeps bespoke configs, samplers and plotting utilities.
+```bash
+make install
+make test
+make smoke-uae
+make smoke-eikonal
+make profile-eikonal
+make benchmark-metric
+```
 
 ## Repository Layout
 
-- `datasets/`: mesh utilities, dataset generators and analytic datasets. Added docstrings highlight entry points for patch creation.
-- `universal_autoencoder/experiments/<dataset>/`: per-dataset UAE configurations with `run_experiment` helpers used by the CLI.
-- `pinns/<experiment>/`: experiment-specific PINN stacks (diffusion, eikonal, wave) with independent configs and trainers.
-- `manifold_pinns/pipeline/`: new orchestration helpers and CLI for the three-stage workflow.
+- `datasets/`: mesh utilities, dataset generators and analytic datasets.
+- `universal_autoencoder/experiments/<dataset>/`: dataset-specific UAE configurations used by the CLI.
+- `pinns/<experiment>/`: PINN experiment adapters used by the CLI.
+- `manifold_pinns/pipeline/`: orchestration helpers and CLI for the three-stage workflow.
 - `manifold_pinns/geometry/`: shared metric, intrinsic operator and paired-overlap utilities.
 - `universal_autoencoder/monge.py`: selectable PCA/Monge chart decoder for atlas ablations.
 - `scripts/`: JSON-emitting profiling and benchmark helpers.

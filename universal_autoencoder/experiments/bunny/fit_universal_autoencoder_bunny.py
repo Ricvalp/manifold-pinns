@@ -1,6 +1,4 @@
 import ml_collections
-from absl import app
-from ml_collections import config_flags
 import wandb
 import jax.numpy as jnp
 import numpy as np
@@ -151,9 +149,6 @@ def load_cfgs():
     cfg.modulated_siren_cfg.scale_modulate = False
 
     return cfg
-
-
-_CONFIG = config_flags.DEFINE_config_dict("config", load_cfgs())
 
 
 def create_dataset(cfg):
@@ -720,12 +715,3 @@ def plot_dataset(chart, supernode_idxs, distance_matrix, name=None):
     if name is not None:
         plt.savefig(name, dpi=300)
     plt.close()
-
-def main(_):
-    """Entry point used by absl.app."""
-    cfg = _CONFIG.value
-    run_experiment(cfg)
-
-
-if __name__ == "__main__":
-    app.run(main)
