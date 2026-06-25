@@ -1,0 +1,66 @@
+#!/usr/bin/env bash
+# Source this file from the repository root before running local experiments:
+#   source env.sh
+
+_mp_repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+export MANIFOLD_PINNS_REPO_ROOT="${MANIFOLD_PINNS_REPO_ROOT:-${_mp_repo_root}}"
+
+if [ -z "${MANIFOLD_PINNS_STORAGE_ROOT:-}" ]; then
+  for _mp_mount_root in "/media/${USER}" "/run/media/${USER}" "/Volumes"; do
+    if [ ! -d "${_mp_mount_root}" ]; then
+      continue
+    fi
+    for _mp_mount in "${_mp_mount_root}"/*; do
+      if [ -d "${_mp_mount}" ] && [ -w "${_mp_mount}" ]; then
+        export MANIFOLD_PINNS_STORAGE_ROOT="${_mp_mount}/manifold-pinns"
+        break 2
+      fi
+    done
+  done
+
+fi
+
+if [ -z "${MANIFOLD_PINNS_STORAGE_ROOT:-}" ]; then
+  export MANIFOLD_PINNS_STORAGE_ROOT="${_mp_repo_root}/.local_runs"
+fi
+
+export MANIFOLD_PINNS_STORAGE_ROOT="${MANIFOLD_PINNS_STORAGE_ROOT:-${_mp_repo_root}/.local_runs}"
+export MANIFOLD_PINNS_DATA_ROOT="${MANIFOLD_PINNS_DATA_ROOT:-${MANIFOLD_PINNS_STORAGE_ROOT}/data}"
+export MANIFOLD_PINNS_RUN_ROOT="${MANIFOLD_PINNS_RUN_ROOT:-${MANIFOLD_PINNS_STORAGE_ROOT}/runs}"
+export MANIFOLD_PINNS_CHECKPOINT_ROOT="${MANIFOLD_PINNS_CHECKPOINT_ROOT:-${MANIFOLD_PINNS_STORAGE_ROOT}/checkpoints}"
+export MANIFOLD_PINNS_FIGURE_ROOT="${MANIFOLD_PINNS_FIGURE_ROOT:-${MANIFOLD_PINNS_STORAGE_ROOT}/figures}"
+export MANIFOLD_PINNS_BATCH_ROOT="${MANIFOLD_PINNS_BATCH_ROOT:-${MANIFOLD_PINNS_STORAGE_ROOT}/batches}"
+export MANIFOLD_PINNS_PROFILER_ROOT="${MANIFOLD_PINNS_PROFILER_ROOT:-${MANIFOLD_PINNS_STORAGE_ROOT}/profiler}"
+export MANIFOLD_PINNS_EVAL_ROOT="${MANIFOLD_PINNS_EVAL_ROOT:-${MANIFOLD_PINNS_STORAGE_ROOT}/eval}"
+
+export UV_PROJECT_ENVIRONMENT="${UV_PROJECT_ENVIRONMENT:-${MANIFOLD_PINNS_STORAGE_ROOT}/.venv}"
+export UV_CACHE_DIR="${UV_CACHE_DIR:-${MANIFOLD_PINNS_STORAGE_ROOT}/uv-cache}"
+export XDG_CACHE_HOME="${XDG_CACHE_HOME:-${MANIFOLD_PINNS_STORAGE_ROOT}/xdg-cache}"
+export JAX_COMPILATION_CACHE_DIR="${JAX_COMPILATION_CACHE_DIR:-${MANIFOLD_PINNS_STORAGE_ROOT}/jax-cache}"
+export MPLCONFIGDIR="${MPLCONFIGDIR:-${MANIFOLD_PINNS_STORAGE_ROOT}/matplotlib}"
+
+export WANDB_DIR="${WANDB_DIR:-${MANIFOLD_PINNS_STORAGE_ROOT}/wandb}"
+export WANDB_CACHE_DIR="${WANDB_CACHE_DIR:-${MANIFOLD_PINNS_STORAGE_ROOT}/wandb-cache}"
+export WANDB_DATA_DIR="${WANDB_DATA_DIR:-${MANIFOLD_PINNS_STORAGE_ROOT}/wandb-data}"
+export WANDB_MODE="${WANDB_MODE:-offline}"
+export MANIFOLD_PINNS_WANDB_USE="${MANIFOLD_PINNS_WANDB_USE:-0}"
+
+mkdir -p \
+  "${MANIFOLD_PINNS_DATA_ROOT}" \
+  "${MANIFOLD_PINNS_RUN_ROOT}" \
+  "${MANIFOLD_PINNS_CHECKPOINT_ROOT}" \
+  "${MANIFOLD_PINNS_FIGURE_ROOT}" \
+  "${MANIFOLD_PINNS_BATCH_ROOT}" \
+  "${MANIFOLD_PINNS_PROFILER_ROOT}" \
+  "${MANIFOLD_PINNS_EVAL_ROOT}" \
+  "${UV_CACHE_DIR}" \
+  "${XDG_CACHE_HOME}" \
+  "${JAX_COMPILATION_CACHE_DIR}" \
+  "${MPLCONFIGDIR}" \
+  "${WANDB_DIR}" \
+  "${WANDB_CACHE_DIR}" \
+  "${WANDB_DATA_DIR}"
+
+echo "MANIFOLD_PINNS_STORAGE_ROOT=${MANIFOLD_PINNS_STORAGE_ROOT}"
+echo "MANIFOLD_PINNS_DATA_ROOT=${MANIFOLD_PINNS_DATA_ROOT}"
+echo "MANIFOLD_PINNS_RUN_ROOT=${MANIFOLD_PINNS_RUN_ROOT}"

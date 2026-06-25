@@ -11,14 +11,13 @@ from charts import (
     load_charts,
     find_intersection_indices,
     find_closest_points_to_mesh,
-    get_metric_tensor_and_sqrt_det_g_universal_autodecoder,
-    load_charts3d,
 )
 
 from pinns.eikonal.get_dataset import get_dataset, get_eikonal_gt_solution
+from pinns.eikonal.chart_geometry import prepare_chart_geometry
 from pinns.eikonal.utils import get_last_checkpoint_dir
 
-from jaxpi.utils import restore_checkpoint, load_config
+from jaxpi.utils import restore_checkpoint
 from jaxpi.solution import get_final_solution, load_solution, save_solution
 
 from pinns.eikonal.plot import (
@@ -28,9 +27,17 @@ from pinns.eikonal.plot import (
     plot_correlation,
 )
 
-from plot_functions.plot import plot_3d_pointcloud
-
 import jax
+
+
+def _sparse_sampling_kwargs(config: ml_collections.ConfigDict) -> dict:
+    sparse_cfg = getattr(config, "sparse_points", None)
+    if sparse_cfg is None:
+        return {}
+    return {
+        "sampling_strategy": getattr(sparse_cfg, "strategy", "random"),
+        "sampling_num_bins": getattr(sparse_cfg, "num_bins", None),
+    }
 
 
 def evaluate(config: ml_collections.ConfigDict):
@@ -39,47 +46,27 @@ def evaluate(config: ml_collections.ConfigDict):
     Path(config.figure_path).mkdir(parents=True, exist_ok=True)
     Path(config.eval.solution_path).mkdir(parents=True, exist_ok=True)
 
-    charts_config = load_config(
-        Path(config.autoencoder_checkpoint.checkpoint_path) / "cfg.json",
-    )
-    model_config = load_config(
-        Path(config.eval.checkpoint_dir) / "cfg.json",
-    )
-
     eval_config = config.eval
 
     (
         loaded_charts3d,
-        loaded_charts_idxs,
-        loaded_boundaries,
-        loaded_boundary_indices,
-    ) = load_charts3d(config.dataset.charts_path)
-
-    charts_mu = np.zeros((len(loaded_charts3d.keys()), 3))
-    charts_std = np.zeros((len(loaded_charts3d.keys()), ))
-    for key in loaded_charts3d.keys():
-        mu = loaded_charts3d[key].mean(axis=0)
-        charts_mu[key] = mu
-        loaded_charts3d[key] = loaded_charts3d[key] - mu
-        std = loaded_charts3d[key].std()
-        charts_std[key] = std
-        loaded_charts3d[key] = loaded_charts3d[key] / std
-
-    (
+        charts_mu,
+        charts_std,
         inv_metric_tensor,
         sqrt_det_g,
         decoder,
-    ), (conditionings, d_params) = get_metric_tensor_and_sqrt_det_g_universal_autodecoder(
-        autoencoder_cfg=charts_config,
-        cfg=config,
-        charts=loaded_charts3d,
-        inverse=True,
-    )
+        conditionings,
+        d_params,
+    ) = prepare_chart_geometry(config)
 
     x, y, boundaries_x, boundaries_y, bcs_x, bcs_y, bcs, charts3d = get_dataset(
         charts_path=config.dataset.charts_path,
         N=config.N,
         idxs=config.idxs,
+        seed=config.bcs_seed,
+        enforce_source_bc=config.eikonal.enforce_source_bc,
+        source_idx=config.eikonal.source_idx,
+        **_sparse_sampling_kwargs(config),
     )
 
     num_charts = len(x)
@@ -200,10 +187,23 @@ def evaluate(config: ml_collections.ConfigDict):
                 config.figure_path + f"/difference_eikonal_3d_{angles[1]}.png",
                 s=15,
             )
-    num_chart = config.dataset.charts_path.split("/")[-1][-1]
-    dataset_name = config.dataset.charts_path.split("/")[-2]
-    plot_3d_pointcloud(pts, sol, s=2, save_path=config.figure_path + f"/{dataset_name}_eikonal_3d_{num_chart}.png")
-    plot_3d_pointcloud(mesh_pts, gt_sol, s=2, save_path=config.figure_path + f"/{dataset_name}_gt_eikonal_3d_{num_chart}.png")
+    charts_path = Path(config.dataset.charts_path)
+    chart_label = charts_path.name
+    dataset_name = charts_path.parent.name
+    plot_3d_solution(
+        pts,
+        sol,
+        (30, 45),
+        config.figure_path + f"/{dataset_name}_eikonal_3d_{chart_label}.png",
+        s=2,
+    )
+    plot_3d_solution(
+        mesh_pts,
+        gt_sol,
+        (30, 45),
+        config.figure_path + f"/{dataset_name}_gt_eikonal_3d_{chart_label}.png",
+        s=2,
+    )
 
     MSE = jnp.mean((mesh_sol - gt_sol) ** 2)
     print(f"MSE: {MSE}")
@@ -220,5 +220,5 @@ def evaluate(config: ml_collections.ConfigDict):
         mesh_sol,
         gt_sol,
         known_solution,
-        name=config.figure_path + f"/{dataset_name}_eikonal_correlation_{num_chart}",
+        name=config.figure_path + f"/{dataset_name}_eikonal_correlation_{chart_label}",
     )

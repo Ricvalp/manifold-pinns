@@ -11,17 +11,30 @@ utilities under `manifold_pinns/`, with the CLI as the supported entry point.
 
 ## Environment
 
-All commands below assume the repository root as the working directory. Install the
-local `jaxpi` package and this repository in editable mode:
+All commands below assume the repository root as the working directory. The
+project uses `uv` with Python 3.11, a root `uv.lock`, and an editable local
+`jaxpi` path dependency:
 
 ```bash
-pip install -e ./jaxpi
-pip install -e .
+source env.sh
+uv sync
 ```
 
-The root `pyproject.toml` and `requirements.txt` pin compatible major versions
-for JAX, Flax, Optax, NumPy, SciPy, NetworkX, Torch, Matplotlib, Weights &
-Biases and pytest. The `Makefile` provides the same install command:
+On Snellius, use the scratch-oriented environment script instead:
+
+```bash
+source env_snellius.sh
+uv sync --extra cuda
+```
+
+The environment scripts set roots for generated data, runs, checkpoints,
+figures, cached PINN batches, profiler traces, W&B files, uv cache, and JAX
+cache. Override `MANIFOLD_PINNS_STORAGE_ROOT` before sourcing either script if
+you want all heavy artifacts under a specific external mount or scratch path.
+
+The root `pyproject.toml` pins compatible major versions for JAX, Flax, Optax,
+NumPy, SciPy, NetworkX, Torch, Matplotlib, Weights & Biases and pytest. The
+`Makefile` provides the same install command:
 
 ```bash
 make install
@@ -33,6 +46,12 @@ A new helper CLI wraps the three stages:
 
 ```bash
 python -m manifold_pinns.pipeline.cli <command> [...]
+```
+
+or, without activating the virtual environment:
+
+```bash
+uv run python -m manifold_pinns.pipeline.cli <command> [...]
 ```
 
 ### Step 0 – dataset generation
@@ -125,9 +144,9 @@ make benchmark-metric
 ## Tips
 
 - Each stage logs to Weights & Biases when enabled. Disable with `--override "wandb.use=False"` or by editing the relevant config.
-- Generated datasets live in `./datasets/<name>/`. Check the configs for exact filenames (e.g., `charts_1`, `uae_dataset`).
-- Autoencoder checkpoints are stored under `universal_autoencoder/experiments/<dataset>/checkpoints/`.
-- PINN checkpoints and figures are saved inside the corresponding `pinns/<experiment>/<dataset>/` folders.
+- Generated datasets live under `MANIFOLD_PINNS_DATA_ROOT`.
+- Autoencoder and PINN checkpoints live under `MANIFOLD_PINNS_CHECKPOINT_ROOT`.
+- Figures, profiler traces, cached PINN batches, eval outputs, and W&B files live under the corresponding `MANIFOLD_PINNS_*_ROOT` variables from `env.sh` or `env_snellius.sh`.
 
 ## Sanity Check
 

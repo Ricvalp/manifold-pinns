@@ -1,12 +1,30 @@
 from datetime import datetime
 import ml_collections
+from manifold_pinns.pipeline.env import (
+    batch_path,
+    checkpoint_path,
+    data_path,
+    env_bool,
+    env_int,
+    env_path,
+    eval_path,
+    figure_path,
+    profiler_path,
+    run_path,
+    wandb_entity,
+    wandb_project,
+)
 
 
 def get_config():
     """Get the default hyperparameter configuration."""
     config = ml_collections.ConfigDict()
 
-    config.figure_path = "./figures/" + str(datetime.now().strftime("%Y%m%d-%H%M%S"))
+    config.figure_path = figure_path(
+        "eikonal",
+        "coil",
+        str(datetime.now().strftime("%Y%m%d-%H%M%S")),
+    )
 
     config.plot = False
 
@@ -20,8 +38,15 @@ def get_config():
 
     config.num_supernodes = 128
 
+    config.chart = ml_collections.ConfigDict()
+    config.chart.backend = "uae"
+
     config.dataset = ml_collections.ConfigDict()
-    config.dataset.charts_path = "./datasets/coil/charts_1"
+    config.dataset.charts_path = env_path(
+        "MANIFOLD_PINNS_EIKONAL_COIL_CHARTS_PATH",
+        data_path("coil", "charts_1"),
+    )
+    config.dataset.regenerate_charts2d = False
 
     config.eikonal = ml_collections.ConfigDict()
     config.eikonal.enforce_source_bc = True
@@ -29,14 +54,27 @@ def get_config():
     config.eikonal.source_bc_weight = 1.0
     config.eikonal.hard_source_ansatz = False
 
+    config.sparse_points = ml_collections.ConfigDict()
+    config.sparse_points.path = env_path(
+        "MANIFOLD_PINNS_EIKONAL_COIL_SPARSE_POINTS_PATH",
+        run_path("sparse_points", "eikonal", "coil"),
+    )
+    config.sparse_points.strategy = "random"
+    config.sparse_points.num_bins = None
+
     # Autoencoder checkpoint
     config.autoencoder_checkpoint = ml_collections.ConfigDict()
-    config.autoencoder_checkpoint.checkpoint_path = "./universal_autoencoder/experiments/coil/checkpoints/2ux0lr1s"
-    config.autoencoder_checkpoint.step = 1000000
+    config.autoencoder_checkpoint.checkpoint_path = env_path(
+        "MANIFOLD_PINNS_UAE_COIL_CHECKPOINT",
+        checkpoint_path("uae", "coil", "latest"),
+    )
+    config.autoencoder_checkpoint.step = env_int("MANIFOLD_PINNS_UAE_COIL_STEP", 0)
 
     # Weights & Biases
     config.wandb = wandb = ml_collections.ConfigDict()
-    wandb.project = "M-PINN"
+    wandb.use = env_bool("MANIFOLD_PINNS_WANDB_USE", False)
+    wandb.project = wandb_project("M-PINN")
+    wandb.entity = wandb_entity()
     wandb.name = "default"
     wandb.tag = None
     wandb.log_every_steps = 100
@@ -82,7 +120,8 @@ def get_config():
     training.lbfgs_max_steps = 0
 
     training.load_existing_batches = True
-    training.batches_path = "pinns/eikonal/coil/data/"
+    training.batches_path = batch_path("eikonal", "coil")
+    training.num_boundary_batches = 500
 
     # training.res_batches_path = "pinns/eikonal/coil/data/res_batches.npy"
     # training.boundary_batches_path = (
@@ -119,22 +158,25 @@ def get_config():
     config.profiler = profiler = ml_collections.ConfigDict()
     profiler.start_step = 200
     profiler.end_step = 210
-    profiler.log_dir = "pinns/eikonal/coil/profiler"
+    profiler.log_dir = profiler_path("eikonal", "coil")
 
     # Saving
     config.saving = saving = ml_collections.ConfigDict()
-    saving.checkpoint_dir = "pinns/eikonal/coil/checkpoints/"
+    saving.checkpoint_dir = checkpoint_path("pinn", "eikonal", "coil")
     saving.save_every_steps = 100000
     saving.num_keep_ckpts = 5
 
     # Eval
     config.eval = eval = ml_collections.ConfigDict()
     eval.eval_with_last_ckpt = False
-    eval.checkpoint_dir = "pinns/eikonal/coil/checkpoints/best/6jvovynq"
+    eval.checkpoint_dir = env_path(
+        "MANIFOLD_PINNS_EIKONAL_COIL_CHECKPOINT",
+        saving.checkpoint_dir,
+    )
     eval.step = 100000
     eval.N = 2000
     eval.use_existing_solution = False
-    eval.solution_path = "pinns/eikonal/coil/eval/"
+    eval.solution_path = eval_path("eikonal", "coil")
     eval.plot_everything = True
 
     # Input shape for initializing Flax models

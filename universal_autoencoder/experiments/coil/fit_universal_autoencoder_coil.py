@@ -16,6 +16,15 @@ import json
 from universal_autoencoder.upt_autoencoder import UniversalAutoencoder
 from universal_autoencoder.siren import ModulatedSIREN
 from universal_autoencoder.losses import make_loss_fn
+from manifold_pinns.pipeline.env import (
+    checkpoint_path,
+    data_path,
+    env_bool,
+    figure_path,
+    profiler_path,
+    wandb_entity,
+    wandb_project,
+)
 from manifold_pinns.geometry.metrics import inv_2x2_spd
 from datasets.uae_dataset import UniversalAEDataset
 
@@ -25,7 +34,7 @@ def load_cfgs():
     cfg = ml_collections.ConfigDict()
 
     cfg.seed = 0
-    cfg.figure_path = "figures/fit_universal_autoencoder_coil"
+    cfg.figure_path = figure_path("uae", "coil")
 
     cfg.uae = ml_collections.ConfigDict()
     cfg.uae.architecture = "upt_siren"
@@ -44,7 +53,7 @@ def load_cfgs():
     dataset.seed = 37
     dataset.create_dataset = False
     dataset.mesh_path = "./datasets/obj_files/coil.obj"
-    dataset.charts_path = "/datasets/coil/uae_dataset"
+    dataset.charts_path = data_path("coil", "uae_dataset")
     dataset.points_per_unit_area = 8
     dataset.subset_cardinality = None
     dataset.num_points = 1000
@@ -86,7 +95,7 @@ def load_cfgs():
     # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 
     cfg.checkpoint = ml_collections.ConfigDict()
-    cfg.checkpoint.path = "universal_autoencoder/experiments/coil/checkpoints"
+    cfg.checkpoint.path = checkpoint_path("uae", "coil")
     cfg.checkpoint.save_every = 50000
     cfg.checkpoint.keep = 10
     cfg.checkpoint.overwrite = True
@@ -96,9 +105,10 @@ def load_cfgs():
     # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 
     cfg.wandb = ml_collections.ConfigDict()
-    cfg.wandb.use = True
+    cfg.wandb.use = env_bool("MANIFOLD_PINNS_WANDB_USE", False)
     cfg.wandb.wandb_log_every = 500
-    cfg.wandb.project = "universal_autoencoder-coil"
+    cfg.wandb.project = wandb_project("universal_autoencoder-coil")
+    cfg.wandb.entity = wandb_entity()
     cfg.wandb.log_riemann_every = 50000
     cfg.wandb.run_name_prefix = "coil"
 
@@ -108,7 +118,7 @@ def load_cfgs():
 
     cfg.profiler = ml_collections.ConfigDict()
     cfg.profiler.use = False
-    cfg.profiler.log_dir = "universal_autoencoder/profiler/"
+    cfg.profiler.log_dir = profiler_path("uae", "coil")
     cfg.profiler.start_step = 20
     cfg.profiler.end_step = 30
 
@@ -212,7 +222,6 @@ def run_experiment(cfg):
         )
         wandb_id = run.id
         wandb.run.name = f"{cfg.wandb.run_name_prefix}_{wandb_id}"
-        wandb.run.save()
     else:
         wandb_id = "no_wandb_" + str(cfg.seed)
     
@@ -363,7 +372,7 @@ def run_experiment(cfg):
             key, subkey = jax.random.split(key)
             state, loss, aux, grads = train_step(state, batch, subkey)
 
-            if step % cfg.wandb.wandb_log_every == 0:
+            if cfg.wandb.use and step % cfg.wandb.wandb_log_every == 0:
 
                 if step % cfg.wandb.log_riemann_every == 0:
                     val_batch = next(iter(val_data_loader)) 
@@ -385,8 +394,7 @@ def run_experiment(cfg):
                     "riemannian_loss": aux["riemannian"],
                 }
 
-                if cfg.wandb.use:
-                    wandb.log(log_dict, step=step)
+                wandb.log(log_dict, step=step)
 
             if step % cfg.checkpoint.save_every == 0:
                 save_checkpoint(state, cfg.checkpoint.path + f"/{wandb_id}", keep=cfg.checkpoint.keep, overwrite=cfg.checkpoint.overwrite)
@@ -399,7 +407,14 @@ def run_experiment(cfg):
             
             data_loader_iter = iter(data_loader)
     
-    # save_checkpoint(state, cfg.checkpoint.path + f"/{wandb_id}", keep=cfg.checkpoint.keep, overwrite=cfg.checkpoint.overwrite)
+    final_checkpoint_dir = cfg.checkpoint.path + f"/{wandb_id}"
+    save_checkpoint(
+        state,
+        final_checkpoint_dir,
+        keep=cfg.checkpoint.keep,
+        overwrite=cfg.checkpoint.overwrite,
+    )
+    print(f"Saved final checkpoint to {final_checkpoint_dir} at step {int(state.step)}")
 
 # ------------------------------
 # --------- testing ------------

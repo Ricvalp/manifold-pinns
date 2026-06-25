@@ -1,5 +1,6 @@
 from pathlib import Path
 import matplotlib.pyplot as plt
+import time
 
 import ml_collections
 from pinns.eikonal import models
@@ -24,17 +25,16 @@ import jax
 import jax.numpy as jnp
 
 from charts import (
-    get_metric_tensor_and_sqrt_det_g_universal_autodecoder,
     find_intersection_indices,
     find_closest_points_to_mesh,
     load_charts,
-    load_charts3d,
 )
 
 from pinns.eikonal.get_dataset import (
     get_dataset,
     get_eikonal_gt_solution,
 )
+from pinns.eikonal.chart_geometry import chart_backend, prepare_chart_geometry
 
 from pinns.eikonal.plot import (
     plot_charts_with_supernodes,
@@ -51,10 +51,28 @@ from pinns.eikonal.plot import (
 import numpy as np
 
 import wandb
-from jaxpi.utils import save_checkpoint, load_config
+from jaxpi.utils import save_checkpoint
 from jaxpi.solution import get_final_solution
 
 from pinns.eikonal.utils import set_profiler
+
+
+def _sparse_point_ids_path(config: ml_collections.ConfigDict) -> str | None:
+    sparse_cfg = getattr(config, "sparse_points", None)
+    sparse_root = getattr(sparse_cfg, "path", None) if sparse_cfg is not None else None
+    if not sparse_root:
+        return None
+    return str(Path(sparse_root) / f"N{config.N}_seed{config.bcs_seed}.npy")
+
+
+def _sparse_sampling_kwargs(config: ml_collections.ConfigDict) -> dict:
+    sparse_cfg = getattr(config, "sparse_points", None)
+    if sparse_cfg is None:
+        return {}
+    return {
+        "sampling_strategy": getattr(sparse_cfg, "strategy", "random"),
+        "sampling_num_bins": getattr(sparse_cfg, "num_bins", None),
+    }
 
 
 def train_and_evaluate(config: ml_collections.ConfigDict):
@@ -75,60 +93,59 @@ def train_and_evaluate(config: ml_collections.ConfigDict):
         config.weighting.init_weights.source = config.eikonal.source_bc_weight
 
     wandb_config = config.wandb
-    run = wandb.init(
-        project=wandb_config.project,
-        name=wandb_config.name,
-        entity=wandb_config.entity,
-        config=config,
-    )
+    use_wandb = bool(getattr(wandb_config, "use", False))
+    if use_wandb:
+        run = wandb.init(
+            project=wandb_config.project,
+            name=wandb_config.name,
+            entity=getattr(wandb_config, "entity", None),
+            config=config.to_dict(),
+        )
+        run_id = run.id
+    else:
+        run = None
+        explicit_run_id = getattr(config, "run_id", None)
+        if explicit_run_id:
+            run_id = explicit_run_id
+        else:
+            backend = chart_backend(config)
+            run_name = getattr(wandb_config, "name", None)
+            if not run_name or run_name == "default":
+                run_name = (
+                    f"no_wandb_{backend}_N{config.N}_seed{config.seed}"
+                    f"_bcs{config.bcs_seed}"
+                )
+            run_id = f"{run_name}_{time.strftime('%Y%m%d-%H%M%S')}"
 
     Path(config.figure_path).mkdir(parents=True, exist_ok=True)
 
     # Path(config.profiler.log_dir).mkdir(parents=True, exist_ok=True)
 
-    autoencoder_config = load_config(
-        Path(config.autoencoder_checkpoint.checkpoint_path) / "cfg.json",
-    )
-
-    checkpoint_dir = f"{config.saving.checkpoint_dir}/{run.id}"
+    checkpoint_dir = Path(config.saving.checkpoint_dir) / run_id
     Path(checkpoint_dir).mkdir(parents=True, exist_ok=True)
-    with open(checkpoint_dir + "/cfg.json", "w") as f:
+    with open(checkpoint_dir / "cfg.json", "w") as f:
         json.dump(config.to_dict(), f, indent=4)
 
     (
         loaded_charts3d,
-        loaded_charts_idxs,
-        loaded_boundaries,
-        loaded_boundary_indices,
-    ) = load_charts3d(config.dataset.charts_path)
-
-    charts_mu = np.zeros((len(loaded_charts3d.keys()), 3))
-    charts_std = np.zeros((len(loaded_charts3d.keys()), ))
-    for key in loaded_charts3d.keys():
-        mu = loaded_charts3d[key].mean(axis=0)
-        charts_mu[key] = mu
-        loaded_charts3d[key] = loaded_charts3d[key] - mu
-        std = loaded_charts3d[key].std()
-        charts_std[key] = std
-        loaded_charts3d[key] = loaded_charts3d[key] / std
-
-    (
+        charts_mu,
+        charts_std,
         inv_metric_tensor,
         sqrt_det_g,
         decoder,
-    ), (conditionings, d_params) = get_metric_tensor_and_sqrt_det_g_universal_autodecoder(
-        autoencoder_cfg=autoencoder_config,
-        cfg=config,
-        charts=loaded_charts3d,
-        inverse=True,
-    )
+        conditionings,
+        d_params,
+    ) = prepare_chart_geometry(config)
 
     x, y, boundaries_x, boundaries_y, bcs_x, bcs_y, bcs, charts3d = get_dataset(
         charts_path=config.dataset.charts_path,
         N=config.N,
         idxs=config.idxs,
+        seed=config.bcs_seed,
         enforce_source_bc=config.eikonal.enforce_source_bc,
         source_idx=config.eikonal.source_idx,
+        **_sparse_sampling_kwargs(config),
+        save_point_ids_path=_sparse_point_ids_path(config),
     )
 
     np.save(
@@ -140,7 +157,7 @@ def train_and_evaluate(config: ml_collections.ConfigDict):
 
     num_charts = len(x)
 
-    if config.plot:
+    if config.plot and chart_backend(config) == "uae":
 
         plot_charts_with_supernodes(
             loaded_charts3d,
@@ -206,6 +223,11 @@ def train_and_evaluate(config: ml_collections.ConfigDict):
             charts_std=charts_std,
             name=Path(config.figure_path) / "combined_3d_with_metric.png",
         )
+    elif config.plot:
+        logging.warning(
+            "Skipping decoder-dependent diagnostic plots for chart.backend=%s.",
+            chart_backend(config),
+        )
 
     bcs_sampler = iter(
         UniformBCSampler(
@@ -234,8 +256,8 @@ def train_and_evaluate(config: ml_collections.ConfigDict):
             boundaries_y=boundaries_y,
             batch_size=config.training.batch_size,
             boundary_batches_paths=(
-                config.training.batches_path + "boundary_batches.npy",
-                config.training.batches_path + "boundary_pairs_idxs.npy",
+                str(Path(config.training.batches_path) / "boundary_batches.npy"),
+                str(Path(config.training.batches_path) / "boundary_pairs_idxs.npy"),
             ),
             load_existing_batches=config.training.load_existing_batches,
         )
@@ -308,33 +330,35 @@ def train_and_evaluate(config: ml_collections.ConfigDict):
         loss, aux, model.state = model.step(model.state, batch)
 
         if step % config.logging.log_every_steps == 0:
-            wandb.log(
-                {
-                    "loss": loss,
-                    "bcs_loss": aux["bcs"],
-                    "res_loss": aux["res"],
-                    "boundary_loss": aux["bc"],
-                    **({"source_bc_loss": aux["source"]} if "source" in aux else {}),
-                },
-                step,
-            )
+            if use_wandb:
+                wandb.log(
+                    {
+                        "loss": loss,
+                        "bcs_loss": aux["bcs"],
+                        "res_loss": aux["res"],
+                        "boundary_loss": aux["bc"],
+                        **({"source_bc_loss": aux["source"]} if "source" in aux else {}),
+                    },
+                    step,
+                )
 
         if step % config.logging.eval_every_steps == 0:
             losses, eval_loss = model.eval(
                 model.state, batch, eval_x, eval_y, u_eval, bcs_charts
             )
-            wandb.log(
-                {
-                    "eval_loss": eval_loss,
-                    "bcs_loss": losses["bcs"],
-                    "res_loss": losses["res"],
-                    "boundary_loss": losses["bc"],
-                    "bcs_weight": model.state.weights["bcs"],
-                    "res_weight": model.state.weights["res"],
-                    "boundary_weight": model.state.weights["bc"],
-                },
-                step,
-            )
+            if use_wandb:
+                wandb.log(
+                    {
+                        "eval_loss": eval_loss,
+                        "bcs_loss": losses["bcs"],
+                        "res_loss": losses["res"],
+                        "boundary_loss": losses["bc"],
+                        "bcs_weight": model.state.weights["bcs"],
+                        "res_weight": model.state.weights["res"],
+                        "boundary_weight": model.state.weights["bc"],
+                    },
+                    step,
+                )
 
         if config.weighting.scheme in ["grad_norm", "ntk"]:
             if step % config.weighting.update_every_steps == 0:
@@ -416,7 +440,8 @@ def log_correlation(
         mesh_sol, gt_sol, name=config.figure_path + f"/eikonal_correlation_{step}.png"
     )
 
-    wandb.log({"correlation": fig}, step)
+    if bool(getattr(config.wandb, "use", False)):
+        wandb.log({"correlation": fig}, step)
 
     plt.close(fig)
 

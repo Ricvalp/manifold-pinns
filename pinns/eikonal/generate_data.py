@@ -8,14 +8,12 @@ from pinns.eikonal.samplers import (
     UniformBoundarySampler,
 )
 
-from jaxpi.utils import load_config
-
-from charts import (
-    get_metric_tensor_and_sqrt_det_g_universal_autodecoder,
-    load_charts3d,
-)
-
 from pinns.eikonal.get_dataset import get_dataset
+from pinns.eikonal.chart_geometry import (
+    chart_backend,
+    ensure_chart_coordinates,
+    prepare_chart_geometry,
+)
 from pinns.eikonal.plot import (
     plot_charts_solution,
     plot_charts_with_supernodes,
@@ -29,53 +27,64 @@ from pinns.eikonal.plot import (
 import numpy as np
 
 
+def _sparse_point_ids_path(config: ml_collections.ConfigDict) -> str | None:
+    sparse_cfg = getattr(config, "sparse_points", None)
+    sparse_root = getattr(sparse_cfg, "path", None) if sparse_cfg is not None else None
+    if not sparse_root:
+        return None
+    return str(Path(sparse_root) / f"N{config.N}_seed{config.bcs_seed}.npy")
+
+
+def _sparse_sampling_kwargs(config: ml_collections.ConfigDict) -> dict:
+    sparse_cfg = getattr(config, "sparse_points", None)
+    if sparse_cfg is None:
+        return {}
+    return {
+        "sampling_strategy": getattr(sparse_cfg, "strategy", "random"),
+        "sampling_num_bins": getattr(sparse_cfg, "num_bins", None),
+    }
+
+
 def generate_data(config: ml_collections.ConfigDict):
     """Generate cached training batches for the eikonal PINN."""
 
-    autoencoder_config = load_config(
-        Path(config.autoencoder_checkpoint.checkpoint_path) / "cfg.json",
-    )
+    loaded_charts3d = None
+    charts_mu = None
+    charts_std = None
+    sqrt_det_g = None
+    decoder = None
+    conditionings = None
+    d_params = None
 
-    (
-        loaded_charts3d,
-        loaded_charts_idxs,
-        loaded_boundaries,
-        loaded_boundary_indices,
-    ) = load_charts3d(config.dataset.charts_path)
-
-    charts_mu = np.zeros((len(loaded_charts3d.keys()), 3))
-    charts_std = np.zeros((len(loaded_charts3d.keys()), ))
-    for key in loaded_charts3d.keys():
-        mu = loaded_charts3d[key].mean(axis=0)
-        charts_mu[key] = mu
-        loaded_charts3d[key] = loaded_charts3d[key] - mu
-        std = loaded_charts3d[key].std()
-        charts_std[key] = std
-        loaded_charts3d[key] = loaded_charts3d[key] / std
-
-    (
-        inv_metric_tensor,
-        sqrt_det_g,
-        decoder,
-    ), (conditionings, d_params) = get_metric_tensor_and_sqrt_det_g_universal_autodecoder(
-        autoencoder_cfg=autoencoder_config,
-        cfg=config,
-        charts=loaded_charts3d,
-        inverse=True,
-    )
+    if config.plot and chart_backend(config) == "uae":
+        (
+            loaded_charts3d,
+            charts_mu,
+            charts_std,
+            _,
+            sqrt_det_g,
+            decoder,
+            conditionings,
+            d_params,
+        ) = prepare_chart_geometry(config)
+    else:
+        ensure_chart_coordinates(config)
 
     x, y, boundaries_x, boundaries_y, bcs_x, bcs_y, bcs, charts3d = get_dataset(
         charts_path=config.dataset.charts_path,
         N=config.N,
         idxs=config.idxs,
+        seed=config.bcs_seed,
         enforce_source_bc=getattr(getattr(config, "eikonal", None), "enforce_source_bc", True),
         source_idx=getattr(getattr(config, "eikonal", None), "source_idx", 0),
+        **_sparse_sampling_kwargs(config),
+        save_point_ids_path=_sparse_point_ids_path(config),
     )
 
     Path(config.figure_path).mkdir(parents=True, exist_ok=True)
     Path(config.training.batches_path).mkdir(parents=True, exist_ok=True)
 
-    if config.plot:
+    if config.plot and chart_backend(config) == "uae":
 
         plot_charts_solution(
             bcs_x,
@@ -150,6 +159,11 @@ def generate_data(config: ml_collections.ConfigDict):
             charts_std=charts_std,
             name=Path(config.figure_path) / "combined_3d_with_metric.png",
         )
+    elif config.plot:
+        print(
+            "Skipping decoder-dependent diagnostic plots for "
+            f"chart.backend={chart_backend(config)}."
+        )
 
     bcs_sampler = iter(
         UniformBCSampler(
@@ -186,7 +200,8 @@ def generate_data(config: ml_collections.ConfigDict):
     bcs_batches = []
     bcs_values = []
 
-    for step in tqdm(range(1, 501), desc="Generating batches"):
+    num_boundary_batches = getattr(config.training, "num_boundary_batches", 500)
+    for step in tqdm(range(num_boundary_batches), desc="Generating batches"):
 
         # batch = next(res_sampler), next(boundary_sampler), next(bcs_sampler)
         # res_batches.append(batch[0])
@@ -206,10 +221,11 @@ def generate_data(config: ml_collections.ConfigDict):
 
     # np.save(config.training.batches_path + "res_batches.npy", res_batches_array)
     np.save(
-        config.training.batches_path + "boundary_batches.npy", boundary_batches_array
+        Path(config.training.batches_path) / "boundary_batches.npy",
+        boundary_batches_array,
     )
     np.save(
-        config.training.batches_path + "boundary_pairs_idxs.npy",
+        Path(config.training.batches_path) / "boundary_pairs_idxs.npy",
         boundary_pairs_idxs_array,
     )
 

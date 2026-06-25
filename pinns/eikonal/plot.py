@@ -1,8 +1,10 @@
+import json
+from pathlib import Path
+
 import jax
 import jax.numpy as jnp
 import matplotlib.pyplot as plt
 import numpy as np
-import open3d as o3d
 import seaborn as sns
 import pandas as pd
 import plotly.graph_objects as go
@@ -378,7 +380,7 @@ def plot_3d_solution(pts, sol, angles, name=None, **kwargs):
     plt.close()
 
 
-def plot_correlation(mesh_sol, gt_sol, data=None, name=None, min_val=0.0, max_val=4.0):
+def plot_correlation(mesh_sol, gt_sol, data=None, name=None, min_val=None, max_val=None):
     """
     Generates a correlation plot using seaborn and matplotlib.
 
@@ -391,6 +393,50 @@ def plot_correlation(mesh_sol, gt_sol, data=None, name=None, min_val=0.0, max_va
     Returns:
         matplotlib.figure.Figure: The generated matplotlib figure.
     """
+    mesh_sol = np.asarray(mesh_sol).reshape(-1)
+    gt_sol = np.asarray(gt_sol).reshape(-1)
+    finite = np.isfinite(mesh_sol) & np.isfinite(gt_sol)
+    mesh_sol = mesh_sol[finite]
+    gt_sol = gt_sol[finite]
+    if data is not None:
+        data = np.asarray(data).reshape(-1)
+        data = data[np.isfinite(data)]
+
+    if mesh_sol.size == 0 or gt_sol.size == 0:
+        raise ValueError("Cannot plot correlation with no finite prediction/target pairs.")
+
+    residual = mesh_sol - gt_sol
+    target_norm = np.linalg.norm(gt_sol)
+    relative_l2 = (
+        np.linalg.norm(residual) / target_norm if target_norm > 0.0 else np.nan
+    )
+    tail_threshold = float(np.quantile(gt_sol, 0.9))
+    tail_mask = gt_sol >= tail_threshold
+    tail_residual = residual[tail_mask]
+    tail_target = gt_sol[tail_mask]
+    tail_norm = np.linalg.norm(tail_target)
+    metrics = {
+        "num_points": int(mesh_sol.size),
+        "pred_min": float(np.min(mesh_sol)),
+        "pred_max": float(np.max(mesh_sol)),
+        "target_min": float(np.min(gt_sol)),
+        "target_max": float(np.max(gt_sol)),
+        "mse": float(np.mean(residual ** 2)),
+        "rmse": float(np.sqrt(np.mean(residual ** 2))),
+        "mae": float(np.mean(np.abs(residual))),
+        "relative_l2": float(relative_l2),
+        "correlation": float(np.corrcoef(mesh_sol, gt_sol)[0, 1]),
+        "tail_quantile": 0.9,
+        "tail_threshold": tail_threshold,
+        "tail_num_points": int(np.sum(tail_mask)),
+        "tail_rmse": float(np.sqrt(np.mean(tail_residual ** 2))),
+        "tail_mae": float(np.mean(np.abs(tail_residual))),
+        "tail_bias": float(np.mean(tail_residual)),
+        "tail_relative_l2": float(
+            np.linalg.norm(tail_residual) / tail_norm if tail_norm > 0.0 else np.nan
+        ),
+    }
+
     # Set a professional style using seaborn
     sns.set_theme(style="ticks")
     plt.rcParams["font.family"] = (
@@ -415,7 +461,7 @@ def plot_correlation(mesh_sol, gt_sol, data=None, name=None, min_val=0.0, max_va
         y=gt_sol,
         s=pinn_size,
         ax=ax,
-        c=(0, 0, 1),
+        color=(0, 0, 1),
         label=r"$\mathcal{M}$-PINN",
         edgecolor="none",
     )
@@ -436,9 +482,20 @@ def plot_correlation(mesh_sol, gt_sol, data=None, name=None, min_val=0.0, max_va
     ax.set_ylabel("ground truth")
     # ax.set_title("Correlation between Mesh and Ground Truth Solutions")
 
-    min_val = 0.0
+    if min_val is None:
+        min_val = min(np.min(mesh_sol), np.min(gt_sol))
+        if data is not None and data.size > 0:
+            min_val = min(min_val, np.min(data))
+        if min_val >= 0.0:
+            min_val = 0.0
     if max_val is None:
         max_val = max(np.max(mesh_sol), np.max(gt_sol))
+        if data is not None and data.size > 0:
+            max_val = max(max_val, np.max(data))
+    padding = 0.03 * max(max_val - min_val, 1.0)
+    ax.set_xlim(min_val - padding, max_val + padding)
+    ax.set_ylim(min_val - padding, max_val + padding)
+    ax.set_aspect("equal", adjustable="box")
     ax.plot([min_val, max_val], [min_val, max_val], "r--", lw=2)
 
     # Make legend markers the same size (standardize to a medium size)
@@ -461,12 +518,16 @@ def plot_correlation(mesh_sol, gt_sol, data=None, name=None, min_val=0.0, max_va
     plt.tight_layout()
 
     if name is not None:
-        plt.savefig(f"{name}.pdf", format="pdf", bbox_inches="tight")
+        output_base = Path(name)
+        if output_base.suffix in {".png", ".pdf"}:
+            output_base = output_base.with_suffix("")
+        output_base.parent.mkdir(parents=True, exist_ok=True)
+        plt.savefig(f"{output_base}.pdf", format="pdf", bbox_inches="tight")
         plt.savefig(
-            f"{name}.png", format="png", dpi=300, bbox_inches="tight"
+            f"{output_base}.png", format="png", dpi=300, bbox_inches="tight"
         )  # Higher DPI for better image quality
-
-    plt.show()
+        with open(f"{output_base}.json", "w") as f:
+            json.dump(metrics, f, indent=2, sort_keys=True)
 
     return fig
 

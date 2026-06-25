@@ -8,6 +8,7 @@ version = "0.1.0"
 description = "Chart-based manifold PINNs with universal autoencoder atlases."
 requires-python = ">=3.10"
 dependencies = [
+  "jaxpi",
   "jax>=0.4.25,<0.7",
   "jaxlib>=0.4.25,<0.7",
   "flax>=0.8,<0.12",
@@ -21,7 +22,23 @@ dependencies = [
   "matplotlib>=3.7,<4",
   "wandb>=0.16,<1",
   "pytest>=8,<9",
+  "einops>=0.8,<1",
+  "imageio>=2.34,<3",
+  "libigl>=2.5,<3",
+  "pandas>=2.2,<3",
+  "plotly>=5,<7",
+  "scikit-learn>=1.4,<2",
+  "seaborn>=0.13,<1",
+  "tqdm>=4.66,<5",
 ]
+
+[project.optional-dependencies]
+cuda = [
+  "jax[cuda12]>=0.4.25,<0.7",
+]
+
+[tool.uv.sources]
+jaxpi = { path = "jaxpi", editable = true }
 
 [tool.setuptools.packages.find]
 where = ["."]

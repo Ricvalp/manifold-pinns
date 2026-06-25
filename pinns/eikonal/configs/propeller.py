@@ -16,6 +16,9 @@ def get_config():
     config.mode = "train"
     config.N = 25
 
+    config.chart = ml_collections.ConfigDict()
+    config.chart.backend = "uae"
+
     config.eikonal = ml_collections.ConfigDict()
     config.eikonal.enforce_source_bc = True
     config.eikonal.source_idx = 0

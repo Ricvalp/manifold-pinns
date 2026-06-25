@@ -16,6 +16,15 @@ import json
 from universal_autoencoder.upt_autoencoder_grid import UniversalAutoencoderGrid
 from universal_autoencoder.siren import ModulatedSIREN
 from universal_autoencoder.losses import make_loss_fn
+from manifold_pinns.pipeline.env import (
+    checkpoint_path,
+    data_path,
+    env_bool,
+    figure_path,
+    profiler_path,
+    wandb_entity,
+    wandb_project,
+)
 from manifold_pinns.geometry.metrics import inv_2x2_spd
 from datasets.uae_square import UniversalAESquareDataset
 
@@ -28,7 +37,7 @@ def load_cfgs():
     cfg = ml_collections.ConfigDict()
 
     cfg.seed = 0
-    cfg.figure_path = "figures/square/"
+    cfg.figure_path = figure_path("uae", "square")
 
     cfg.uae = ml_collections.ConfigDict()
     cfg.uae.architecture = "upt_siren"
@@ -46,7 +55,7 @@ def load_cfgs():
     dataset.num_supernodes = 128
     dataset.seed = 37
     dataset.create_dataset = False
-    dataset.charts_path = "/datasets/square/"
+    dataset.charts_path = data_path("square", "uae_dataset")
     dataset.num_points = 1000
     dataset.iterations = 100
     dataset.min_dist = 10.
@@ -80,7 +89,7 @@ def load_cfgs():
     # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 
     cfg.checkpoint = ml_collections.ConfigDict()
-    cfg.checkpoint.path = "universal_autoencoder/experiments/square/checkpoints"
+    cfg.checkpoint.path = checkpoint_path("uae", "square")
     cfg.checkpoint.save_every = 40000
     cfg.checkpoint.keep = 20
     cfg.checkpoint.overwrite = True
@@ -90,9 +99,10 @@ def load_cfgs():
     # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 
     cfg.wandb = ml_collections.ConfigDict()
-    cfg.wandb.use = True
+    cfg.wandb.use = env_bool("MANIFOLD_PINNS_WANDB_USE", False)
     cfg.wandb.wandb_log_every = 500
-    cfg.wandb.project = "universal_autoencoder-square"
+    cfg.wandb.project = wandb_project("universal_autoencoder-square")
+    cfg.wandb.entity = wandb_entity()
     cfg.wandb.test_every = 10000
     cfg.wandb.run_name_prefix = "square"
 
@@ -102,7 +112,7 @@ def load_cfgs():
 
     cfg.profiler = ml_collections.ConfigDict()
     cfg.profiler.use = False
-    cfg.profiler.log_dir = "universal_autoencoder/profiler/square"
+    cfg.profiler.log_dir = profiler_path("uae", "square")
     cfg.profiler.start_step = 20
     cfg.profiler.end_step = 30
 
@@ -203,7 +213,6 @@ def run_experiment(cfg):
         )
         wandb_id = run.id
         wandb.run.name = f"{cfg.wandb.run_name_prefix}_{wandb_id}"
-        wandb.run.save()
     else:
         wandb_id = "no_wandb_" + str(cfg.seed)
     
@@ -292,14 +301,12 @@ def run_experiment(cfg):
             key, subkey = jax.random.split(key)
             state, loss, aux = train_step(state, batch)
 
-            if step % cfg.wandb.wandb_log_every == 0:
-
-                if cfg.wandb.use:
-                    log_dict = {
-                        "loss": loss,
-                        "recon_loss": aux["reconstruction"],
-                    }
-                    wandb.log(log_dict, step=step)
+            if cfg.wandb.use and step % cfg.wandb.wandb_log_every == 0:
+                log_dict = {
+                    "loss": loss,
+                    "recon_loss": aux["reconstruction"],
+                }
+                wandb.log(log_dict, step=step)
 
             if step % cfg.checkpoint.save_every == 0:
                 save_checkpoint(state, cfg.checkpoint.path + f"/{wandb_id}", keep=cfg.checkpoint.keep, overwrite=cfg.checkpoint.overwrite)
@@ -314,6 +321,15 @@ def run_experiment(cfg):
         except StopIteration:
             
             data_loader_iter = iter(data_loader)
+
+    final_checkpoint_dir = cfg.checkpoint.path + f"/{wandb_id}"
+    save_checkpoint(
+        state,
+        final_checkpoint_dir,
+        keep=cfg.checkpoint.keep,
+        overwrite=cfg.checkpoint.overwrite,
+    )
+    print(f"Saved final checkpoint to {final_checkpoint_dir} at step {int(state.step)}")
 
 # ------------------------------
 # --------- testing ------------

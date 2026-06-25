@@ -7,10 +7,43 @@ from typing import Any, Dict
 from . import generate_dataset, run_pinn_experiment, train_autoencoder
 
 
+def _split_override_items(values: str) -> list[str]:
+    """Split comma-separated overrides while respecting Python literals."""
+    items: list[str] = []
+    start = 0
+    depth = 0
+    quote: str | None = None
+    escaped = False
+    for idx, char in enumerate(values):
+        if quote is not None:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == quote:
+                quote = None
+            continue
+
+        if char in {"'", '"'}:
+            quote = char
+        elif char in "([{":
+            depth += 1
+        elif char in ")]}":
+            depth = max(depth - 1, 0)
+        elif char == "," and depth == 0:
+            items.append(values[start:idx].strip())
+            start = idx + 1
+
+    tail = values[start:].strip()
+    if tail:
+        items.append(tail)
+    return items
+
+
 def _parse_overrides(values: str) -> Dict[str, Any]:
     """Parse dot-separated key=value pairs into a nested dictionary."""
     overrides: Dict[str, Any] = {}
-    for item in values.split(","):
+    for item in _split_override_items(values):
         key, raw_value = item.split("=", maxsplit=1)
         try:
             value = ast.literal_eval(raw_value)
