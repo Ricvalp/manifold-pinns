@@ -47,4 +47,4 @@ Then set `PRELIM_RUN="$MANIFOLD_PINNS_RUN_ROOT/prelim_coil_refactor_20260624"`, 
 
 ## Caveats / Next
 - `pca_monge` is useful as a baseline but currently not competitive with the neural UAE for sparse coil Eikonal.
-- Added sparse point strategies `random` and `stratified_geodesic` with saved `.npy` IDs plus JSON geodesic metadata. Next: 100k confirmation for N=16 seed1 or implement tail-anchored sampling if tail variance is unacceptable.
+- `experiment_report.md` documents the completed preliminary funnel. Skipped formal extras: N=4, all N=8/N=32 seeds, final plots, and tail-anchored ablation. Next: accept the new experiment list.
