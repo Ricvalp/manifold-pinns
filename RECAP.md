@@ -1,6 +1,6 @@
 # RECAP.md
 
-Last updated: 2026-06-25
+Last updated: 2026-06-26
 
 ## State
 Refactor workflow for M-PINNs experiments. Supported entry point:
@@ -24,7 +24,7 @@ Near-term plan is `EXPERIMENTS.md`: Day 0 smoke/profile, Day 1 geometry/overlap 
 - Sparse coil Eikonal pilots use exact IDs `[0,475,871,3122,3563,5914,7370,9841]`; Day 4 15k old-UAE eval corr `0.950`, RMSE `44.05`, rel L2 `0.195`, tail RMSE `113.6`.
 - Added `chart.backend={uae,pca_monge}` for Eikonal train/eval/generate_data. `pca_monge` fits normalized chart PCA/Monge decoders, writes backend metadata, uses separate atlas/batch dirs, and supports exact sparse `idxs`.
 - Correlation JSON now includes RMSE, relative L2, correlation, and top-10% tail metrics; added `scripts/compare_eikonal_metrics.py`.
-- 100k-UAE + 50k Eikonal seed0: random N=8 RMSE `43.86`, tail `110.4`; stratified N=8 RMSE `28.87`, tail `69.69`; N=16 RMSE `11.12`, tail `4.05`; N=32 RMSE `11.57`, tail `5.97`.
+- 100k-UAE + 50k Eikonal: random N=8 RMSE `43.86`, tail `110.4`; stratified N=8 RMSE `28.87`, tail `69.69`; N=16 seeds 0/1/2 RMSE `14.09 +/- 3.34`, tail `11.19 +/- 9.52`; N=32 seed0 RMSE `11.57`, tail `5.97`.
 
 ## Verified
 Passing:
@@ -47,4 +47,4 @@ Then set `PRELIM_RUN="$MANIFOLD_PINNS_RUN_ROOT/prelim_coil_refactor_20260624"`, 
 
 ## Caveats / Next
 - `pca_monge` is useful as a baseline but currently not competitive with the neural UAE for sparse coil Eikonal.
-- Added sparse point strategies `random` and `stratified_geodesic` with saved `.npy` IDs plus JSON geodesic metadata. Next: multi-seed N=16, random-vs-stratified N=16, then Snellius-scale runs.
+- Added sparse point strategies `random` and `stratified_geodesic` with saved `.npy` IDs plus JSON geodesic metadata. Next: 100k confirmation for N=16 seed1 or implement tail-anchored sampling if tail variance is unacceptable.
